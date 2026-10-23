@@ -82,17 +82,20 @@ export default function BookAppointment() {
           API.get(`/api/appointments/booked-slots?date=${date}`).catch(() => ({ data: { data: [] } }))
         ]);
 
-        if (servicesRes.data?.success && servicesRes.data.data.length > 0) {
-          const formatted = servicesRes.data.data.map(s => ({
-            id: s._id || s.id,
-            name: s.title || s.name,
+        const rawServices = servicesRes.data?.data || servicesRes.data?.services || servicesRes.data || [];
+        
+        if (Array.isArray(rawServices) && rawServices.length > 0) {
+          const formatted = rawServices.map(s => ({
+            id: String(s._id || s.id),
+            name: s.title || s.name || "Beauty Ritual",
             price: Number(s.price) || 0,
             duration: s.duration || "45 min",
             image: s.image || "https://images.unsplash.com/photo-1562322140-8baeececf3df?w=200&q=80"
           }));
           setAllServices(formatted);
            
-          const target = formatted.find(s => s.id === initialServiceId) || formatted[0];
+          // Match initial service robustly (string comparison)
+          const target = formatted.find(s => s.id === String(initialServiceId)) || formatted[0];
           if (target) {
             setSelectedServiceIds([target.id]);
           }
@@ -110,7 +113,7 @@ export default function BookAppointment() {
 
     fetchData();
 
-    // Socket.io Connection for Real-Time Slot Updates with robust fallback URL
+    // Socket.io Connection for Real-Time Slot Updates
     const socketBase = import.meta.env.VITE_SOCKET_URL || import.meta.env.VITE_API_BASE_URL;
     let socketUrl = "http://localhost:5000";
     if (typeof socketBase === "string" && socketBase.trim().length > 0) {
@@ -176,23 +179,24 @@ export default function BookAppointment() {
   };
 
   const primarySelectedId = selectedServiceIds[0];
-  const primaryService = allServices.find((s) => s.id === primarySelectedId) || allServices[0] || { id: "", name: "Select Ritual", price: 0, duration: "45 min", image: "" };
+  const primaryService = allServices.find((s) => s.id === String(primarySelectedId)) || allServices[0] || { id: "", name: "Select Ritual", price: 0, duration: "45 min", image: "" };
   const additionalSelectedIds = selectedServiceIds.slice(1);
   const additionalSelectedServices = allServices.filter((s) => additionalSelectedIds.includes(s.id));
   const recommendedServices = allServices.filter((s) => !selectedServiceIds.includes(s.id));
 
   const totalCalculatedPrice = selectedServiceIds.reduce((sum, id) => {
-    const s = allServices.find(item => item.id === id);
+    const s = allServices.find(item => item.id === String(id));
     return sum + (s ? s.price : 0);
   }, 0);
 
   const toggleRecommendedService = (id) => {
-    if (selectedServiceIds.includes(id)) {
+    const stringId = String(id);
+    if (selectedServiceIds.includes(stringId)) {
       if (selectedServiceIds.length > 1) {
-        setSelectedServiceIds(selectedServiceIds.filter(item => item !== id));
+        setSelectedServiceIds(selectedServiceIds.filter(item => item !== stringId));
       }
     } else {
-      setSelectedServiceIds([...selectedServiceIds, id]);
+      setSelectedServiceIds([...selectedServiceIds, stringId]);
     }
   };
 
@@ -232,20 +236,26 @@ export default function BookAppointment() {
 
       const res = await API.post("/api/appointments", payload);
 
-      if (res.data?.success) {
+      if (res.data?.success || res.status === 201 || res.status === 200) {
+        const appointmentData = res.data?.data || res.data || {};
         sessionStorage.setItem("beautyvibe_booking_draft", JSON.stringify({
-          ...res.data.data,
+          ...appointmentData,
+          serviceId: primaryService.id,
+          serviceName: primaryService.name,
           price: totalCalculatedPrice,
           date,
           time,
           type: "HOME",
           address,
-          paymentMethod
+          paymentMethod,
+          image: primaryService.image
         }));
         navigate("/checkout");
+        return;
       }
     } catch (err) {
       console.error("Booking error:", err);
+      // Fallback draft storage so user can still proceed to checkout if server route is slow
       sessionStorage.setItem("beautyvibe_booking_draft", JSON.stringify({
         serviceId: primaryService.id,
         serviceName: primaryService.name, 
@@ -255,7 +265,8 @@ export default function BookAppointment() {
         time, 
         type: "HOME",
         address,
-        paymentMethod
+        paymentMethod,
+        image: primaryService.image
       }));
       navigate("/checkout");
     } finally {
