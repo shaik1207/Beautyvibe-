@@ -94,7 +94,7 @@ export default function BookAppointment() {
           }));
           setAllServices(formatted);
            
-          // Match initial service robustly (string comparison)
+          // Robust ID match (supporting stringified or numeric ID parameters)
           const target = formatted.find(s => s.id === String(initialServiceId)) || formatted[0];
           if (target) {
             setSelectedServiceIds([target.id]);
@@ -184,9 +184,10 @@ export default function BookAppointment() {
   const additionalSelectedServices = allServices.filter((s) => additionalSelectedIds.includes(s.id));
   const recommendedServices = allServices.filter((s) => !selectedServiceIds.includes(s.id));
 
+  // Robust calculation with numeric enforcement
   const totalCalculatedPrice = selectedServiceIds.reduce((sum, id) => {
     const s = allServices.find(item => item.id === String(id));
-    return sum + (s ? s.price : 0);
+    return sum + (s ? Number(s.price) || 0 : 0);
   }, 0);
 
   const toggleRecommendedService = (id) => {
@@ -214,8 +215,8 @@ export default function BookAppointment() {
       setError("Please provide your doorstep delivery address or use live location.");
       return;
     }
-    if (!primaryService.id) {
-      setError("Please select at least one valid service.");
+    if (!primaryService.id || totalCalculatedPrice <= 0) {
+      setError("Please select a valid service with a non-zero price.");
       return;
     }
 
@@ -255,7 +256,7 @@ export default function BookAppointment() {
       }
     } catch (err) {
       console.error("Booking error:", err);
-      // Fallback draft storage so user can still proceed to checkout if server route is slow
+      // Fallback draft storage so user can still proceed to checkout safely
       sessionStorage.setItem("beautyvibe_booking_draft", JSON.stringify({
         serviceId: primaryService.id,
         serviceName: primaryService.name, 
