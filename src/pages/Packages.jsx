@@ -44,8 +44,11 @@ export default function UserPackages() {
   useEffect(() => {
     fetchPackages();
 
-    const socket = io("http://localhost:5000", {
-      transports: ["polling", "websocket"]
+    // Dynamically resolve socket URL for local dev & production deployment
+    const socketUrl = import.meta.env.VITE_SOCKET_URL || import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
+    const socket = io(socketUrl, {
+      transports: ["polling", "websocket"],
+      reconnection: true
     });
 
     socket.on("packageAdded", (newPkg) => {

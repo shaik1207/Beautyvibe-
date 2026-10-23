@@ -14,7 +14,6 @@ import {
   Car,
   Home,
   Check,
-  ChevronRight,
   ChevronDown,
   ChevronUp,
   X,
@@ -42,7 +41,7 @@ const formatTime = (timeString) => {
   if (!timeString) return "—";
   const match = String(timeString).match(/^(\d{1,2}):(\d{2})/);
   if (!match) return String(timeString);
-  
+   
   const date = new Date();
   date.setHours(Number(match[1]), Number(match[2]), 0);
   return date.toLocaleTimeString("en-IN", {
@@ -80,7 +79,7 @@ export default function MyBookings() {
   const [isUnauthorized, setIsUnauthorized] = useState(false);
   const [socketConnected, setSocketConnected] = useState(false);
   const [activeTab, setActiveTab] = useState("All");
-  
+   
   // Modals & Action States
   const [passModalOpen, setPassModalOpen] = useState(false);
   const [activeBooking, setActiveBooking] = useState(null);
@@ -129,12 +128,15 @@ export default function MyBookings() {
       const response = await API.get("/api/appointments");
       const result = response.data;
       const list = result?.data || result || [];
-      
+       
       const normalized = list.map(item => ({
         ...item,
+        // Robust normalization supporting both MongoDB _id and SQL id fields
+        uid: item._id || item.id,
+        serviceName: item.serviceName || item.service?.name || "Premium Beauty Ritual",
         image: item.image || item.serviceImage || item.service?.image || "https://images.unsplash.com/photo-1522337660859-02fbefca4702?auto=format&fit=crop&w=400&q=80"
       }));
-      
+       
       setAppointments(Array.isArray(normalized) ? normalized : []);
     } catch (err) {
       console.error("[BeautyVibe] Failed to fetch appointments:", err.response?.data || err.message);
@@ -165,11 +167,12 @@ export default function MyBookings() {
   }, [fetchStaffMembers]);
 
   const updateStatus = async (booking, status) => {
-    if (!booking._id) return;
-    setActionLoading(booking._id);
+    const bookingId = booking.uid || booking._id || booking.id;
+    if (!bookingId) return;
+    setActionLoading(bookingId);
     try {
-      await API.patch(`/api/appointments/${booking._id}/status`, { status });
-      setAppointments((current) => current.map((item) => (item._id === booking._id ? { ...item, status } : item)));
+      await API.patch(`/api/appointments/${bookingId}/status`, { status });
+      setAppointments((current) => current.map((item) => ((item.uid || item._id || item.id) === bookingId ? { ...item, status } : item)));
     } catch (error) {
       console.error("Status update failed:", error);
     } finally {
@@ -178,11 +181,12 @@ export default function MyBookings() {
   };
 
   const assignStaff = async (booking, staffName) => {
-    if (!booking._id) return;
-    setActionLoading(booking._id);
+    const bookingId = booking.uid || booking._id || booking.id;
+    if (!bookingId) return;
+    setActionLoading(bookingId);
     try {
-      await API.patch(`/api/appointments/${booking._id}/assign-staff`, { assignedStaff: staffName });
-      setAppointments((current) => current.map((item) => (item._id === booking._id ? { ...item, assignedStaff: staffName, staff: staffName } : item)));
+      await API.patch(`/api/appointments/${bookingId}/assign-staff`, { assignedStaff: staffName });
+      setAppointments((current) => current.map((item) => ((item.uid || item._id || item.id) === bookingId ? { ...item, assignedStaff: staffName, staff: staffName } : item)));
       setOpenDropdownId(null);
     } catch (error) {
       console.error("Staff assignment failed:", error);
@@ -212,7 +216,7 @@ export default function MyBookings() {
   return (
     <div className="relative min-w-0 flex-1 bg-[#F9FAFB] pb-32 font-sans text-[#2D2623] selection:bg-[#C56E4E] selection:text-white min-h-screen">
       <div className="mx-auto max-w-4xl space-y-6 px-4 pt-6 sm:px-6 sm:pt-8">
-        
+         
         {/* Header Section */}
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
           <div>
@@ -299,7 +303,7 @@ export default function MyBookings() {
           <motion.div variants={staggerContainer} initial="hidden" animate="show" className="space-y-5">
             {filteredAppointments.map((app) => (
               <BookingCard 
-                key={app._id || app.requestId} 
+                key={app.uid} 
                 booking={app} 
                 staffList={staffList}
                 actionLoading={actionLoading}
@@ -334,31 +338,30 @@ export default function MyBookings() {
           />
         )}
       </AnimatePresence>
-
     </div>
   );
 }
 
 // --- BOOKING CARD COMPONENT ---
 function BookingCard({ booking, staffList, actionLoading, updateStatus, assignStaff, openDropdownId, setOpenDropdownId, onShowPass, onTrack }) {
+  const bookingId = booking.uid;
   const isHome = String(booking.type || "").toUpperCase() === "HOME";
   const isCompleted = booking.status === "Completed";
   const isCancelled = booking.status === "Cancelled" || booking.status === "Rejected";
   const isPending = booking.status === "Pending";
   const isAccepted = booking.status === "Accepted";
   const hasStaff = booking.staff || booking.assignedStaff;
-  
+   
   const [isTrackingExpanded, setIsTrackingExpanded] = useState(false);
 
-  // Determine timeline step (4 steps now)
   let activeStep = 0;
   if (isPending) activeStep = 0; 
   else if (isAccepted && !hasStaff) activeStep = 0; 
-  else if (isAccepted && hasStaff) activeStep = isHome ? 2 : 1; // Show Arriving soon if home service
+  else if (isAccepted && hasStaff) activeStep = isHome ? 2 : 1;
   else if (isCompleted) activeStep = 3; 
 
   const staffDetails = parseStaff(hasStaff);
-  
+   
   let badgeColor = "bg-emerald-100 text-emerald-700";
   let statusText = "CONFIRMED";
   if (hasStaff && !isCompleted && !isCancelled) { badgeColor = "bg-blue-100 text-blue-700"; statusText = "EXPERT ASSIGNED"; }
@@ -370,7 +373,7 @@ function BookingCard({ booking, staffList, actionLoading, updateStatus, assignSt
       <div className="flex gap-4">
         <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-gray-100 overflow-hidden shrink-0 border border-gray-100">
           <img 
-            src={booking.image || "https://images.unsplash.com/photo-1522337660859-02fbefca4702?auto=format&fit=crop&w=400&q=80"} 
+            src={booking.image} 
             alt={booking.serviceName} 
             className="w-full h-full object-cover" 
           />
@@ -384,8 +387,8 @@ function BookingCard({ booking, staffList, actionLoading, updateStatus, assignSt
               ₹{Number(booking.amount || booking.price || 0).toLocaleString("en-IN")}
             </span>
           </div>
-          <h3 className="font-serif text-lg font-bold text-gray-900 truncate">{booking.serviceName || "Premium Beauty Ritual"}</h3>
-          
+          <h3 className="font-serif text-lg font-bold text-gray-900 truncate">{booking.serviceName}</h3>
+           
           <div className="mt-1.5 space-y-1 text-xs text-gray-500 font-medium">
             <div className="flex items-center gap-1.5">
               <CalendarDays size={13} /> {formatDate(booking.date)} • {formatTime(booking.time)}
@@ -403,14 +406,14 @@ function BookingCard({ booking, staffList, actionLoading, updateStatus, assignSt
             <>
               <button
                 onClick={() => updateStatus(booking, "Accepted")}
-                disabled={actionLoading === booking._id}
+                disabled={actionLoading === bookingId}
                 className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl bg-emerald-50 px-3 text-xs font-bold text-emerald-700 transition hover:bg-emerald-600 hover:text-white"
               >
                 <Check size={14} /> Accept
               </button>
               <button
                 onClick={() => updateStatus(booking, "Rejected")}
-                disabled={actionLoading === booking._id}
+                disabled={actionLoading === bookingId}
                 className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl bg-red-50 px-3 text-xs font-bold text-red-600 transition hover:bg-red-600 hover:text-white"
               >
                 <X size={14} /> Reject
@@ -420,7 +423,7 @@ function BookingCard({ booking, staffList, actionLoading, updateStatus, assignSt
 
           {isAccepted && !hasStaff && (
             <button
-              onClick={() => setOpenDropdownId(openDropdownId === booking._id ? null : booking._id)}
+              onClick={() => setOpenDropdownId(openDropdownId === bookingId ? null : bookingId)}
               className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 text-xs font-bold text-gray-700 transition hover:bg-gray-50 shadow-sm"
             >
               <Users size={14} /> Assign Staff
@@ -453,7 +456,7 @@ function BookingCard({ booking, staffList, actionLoading, updateStatus, assignSt
         )}
       </div>
 
-      {isAccepted && !hasStaff && openDropdownId === booking._id && (
+      {isAccepted && !hasStaff && openDropdownId === bookingId && (
         <div className="mt-3 rounded-xl border border-gray-200 bg-gray-50 p-2 shadow-inner">
           <p className="px-2 py-2 text-[10px] font-bold uppercase tracking-wider text-gray-500">
             Select Expert
@@ -481,7 +484,6 @@ function BookingCard({ booking, staffList, actionLoading, updateStatus, assignSt
             className="overflow-hidden origin-top"
           >
             <div className="mt-4 bg-gray-50 rounded-2xl border border-gray-100 p-5 shadow-inner">
-              
               <div className="px-4 pb-4">
                 <Stepper currentStep={activeStep} />
               </div>
@@ -505,7 +507,7 @@ function BookingCard({ booking, staffList, actionLoading, updateStatus, assignSt
                         <p className="text-xs text-gray-500 font-medium">{staffDetails?.role || "Specialist"} • 5+ Yrs Exp</p>
                       </div>
                     </div>
-                    
+                     
                     <a href="tel:+919876543210" className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl text-xs font-bold text-red-500 bg-red-50 border border-red-100 hover:bg-red-100 transition shadow-sm">
                       <Phone size={14} /> Call Expert
                     </a>
@@ -531,12 +533,11 @@ function BookingCard({ booking, staffList, actionLoading, updateStatus, assignSt
           </motion.div>
         )}
       </AnimatePresence>
-
     </motion.div>
   );
 }
 
-// --- VISUAL STEPPER COMPONENT (4 STEPS) ---
+// --- VISUAL STEPPER COMPONENT ---
 function Stepper({ currentStep }) {
   const steps = [
     { label: "Booking\nConfirmed", icon: Check },
@@ -581,7 +582,7 @@ function Stepper({ currentStep }) {
 
 // --- DIGITAL TICKET PASS MODAL ---
 function BookingPassModal({ booking, onClose }) {
-  const passCodeStr = booking.passCode || booking.id || "BV-8492026";
+  const passCodeStr = booking.passCode || booking.uid || "BV-8492026";
   const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(passCodeStr)}&margin=10`;
 
   return (
@@ -649,7 +650,7 @@ function BookingPassModal({ booking, onClose }) {
   );
 }
 
-// --- LIVE TRACKING OVERLAY MODAL (Only Call) ---
+// --- LIVE TRACKING OVERLAY MODAL ---
 function LiveTrackingModal({ booking, onClose }) {
   const staffDetails = parseStaff(booking.staff || booking.assignedStaff) || { name: "Assigned Expert", role: "Specialist" };
 
@@ -730,7 +731,7 @@ function LiveTrackingModal({ booking, onClose }) {
 
           <div className="space-y-0 relative pl-4 mt-2 overflow-y-auto max-h-40">
             <div className="absolute left-6 top-3 bottom-6 w-0.5 bg-gray-200" />
-            
+             
             <div className="relative flex gap-4 pb-6">
               <div className="w-5 h-5 rounded-full bg-emerald-500 text-white flex items-center justify-center shrink-0 z-10 border-[3px] border-white shadow-sm">
                 <Check size={10} strokeWidth={3} />

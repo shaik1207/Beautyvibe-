@@ -38,7 +38,7 @@ API.interceptors.request.use((config) => {
 // SAFE IMAGE COMPONENT
 // ==========================================
 const SafeImage = ({ src, alt, className, style, ...props }) => {
-  const [imgSrc, setImgSrc] = useState(src || "/primary.png");
+  const [imgSrc, setImgSrc] = useState(src || "https://images.unsplash.com/photo-1522337660859-02fbefca4702?w=800&q=80");
   const [hasError, setHasError] = useState(false);
 
   return (
@@ -49,7 +49,7 @@ const SafeImage = ({ src, alt, className, style, ...props }) => {
       style={style}
       onError={() => {
         if (!hasError) {
-          setImgSrc("/secondary.png");
+          setImgSrc("https://images.unsplash.com/photo-1522337660859-02fbefca4702?w=800&q=80");
           setHasError(true);
         }
       }}
@@ -122,36 +122,26 @@ const AnimatedWord = ({ word, delay }) => (
 // FALLBACK STATIC DATA (If backend is offline)
 // ==========================================
 const fallbackCategories = [
-  { id: 1, name: "Salon for Women", image: "https://images.unsplash.com/photo-1562322140-8baeececf3df?w=200&q=80" },
-  { id: 2, name: "Spa for Women", image: "https://images.unsplash.com/photo-1544161515-4ab6ce6db874?w=200&q=80" },
-  { id: 3, name: "Facials", image: "https://images.unsplash.com/photo-1570172619644-dfd03ed5d881?w=200&q=80" },
+  { id: 1, name: "Hair", image: "https://images.unsplash.com/photo-1562322140-8baeececf3df?w=200&q=80" },
+  { id: 2, name: "Skin", image: "https://images.unsplash.com/photo-1544161515-4ab6ce6db874?w=200&q=80" },
+  { id: 3, name: "Facial", image: "https://images.unsplash.com/photo-1570172619644-dfd03ed5d881?w=200&q=80" },
   { id: 4, name: "Body Care", image: "https://images.unsplash.com/photo-1515377905703-c4788e51af15?w=200&q=80" },
-  { id: 5, name: "Mani-Pedi", image: "https://images.unsplash.com/photo-1519415510236-718bdfcd89c8?w=200&q=80" },
-  { id: 6, name: "Hair Care", image: "https://images.unsplash.com/photo-1519014816548-bf5fe059e98b?w=200&q=80" },
-  { id: 7, name: "Threading", image: "https://images.unsplash.com/photo-1487412720507-e7ab37603c6f?w=200&q=80" },
-  { id: 8, name: "Packages", image: "https://images.unsplash.com/photo-1552693673-1bf958298935?w=200&q=80" },
+  { id: 5, name: "Nails", image: "https://images.unsplash.com/photo-1519415510236-718bdfcd89c8?w=200&q=80" },
+  { id: 6, name: "Grooming", image: "https://images.unsplash.com/photo-1621605815971-fbc98d665033?w=200&q=80" },
+  { id: 7, name: "Beauty", image: "https://images.unsplash.com/photo-1487412720507-e7ab37603c6f?w=200&q=80" },
+  { id: 8, name: "General", image: "https://images.unsplash.com/photo-1552693673-1bf958298935?w=200&q=80" },
 ];
 
 const fallbackServices = [
   {
-    id: "s1", type: "Facial", title: "Korean Glow Facial", rating: "4.8", reviews: "2.1K", duration: "1 hr 15 mins", price: "899", oldPrice: "1,699", discount: "47% OFF",
+    id: "s1", category: "Facial", name: "Korean Glow Facial", rating: "4.8", reviews: "2.1K", duration: "1 hr 15 mins", price: "899", oldPrice: "1,699", discount: "47% OFF",
     image: "https://images.unsplash.com/photo-1616683693504-3ea7e9ad6fec?w=600&q=80",
-    desc: "A multi-step Korean skincare ritual designed to deeply hydrate, brighten, and give your skin an glass-like luminous complexion."
+    description: "A multi-step Korean skincare ritual designed to deeply hydrate, brighten, and give your skin an glass-like luminous complexion."
   },
   {
-    id: "s2", type: "Body Polishing", title: "Full Body Polishing", rating: "4.7", reviews: "1.8K", duration: "2 hrs 10 mins", price: "1,899", oldPrice: "4,999", discount: "62% OFF",
+    id: "s2", category: "Body Care", name: "Full Body Polishing", rating: "4.7", reviews: "1.8K", duration: "2 hrs 10 mins", price: "1,899", oldPrice: "4,999", discount: "62% OFF",
     image: "https://images.unsplash.com/photo-1519823551278-64ac92734fb1?w=600&q=80",
-    desc: "An intensive exfoliating and nourishing body treatment utilizing organic botanical scrubs and essential oils for ultimate radiance."
-  },
-  {
-    id: "s3", type: "Waxing", title: "Rica Waxing", rating: "4.6", reviews: "1.2K", duration: "50 mins", price: "849", oldPrice: "1,399", discount: "39% OFF",
-    image: "https://images.unsplash.com/photo-1556228578-0d85b1a4d571?w=600&q=80",
-    desc: "Gentle Italian Rica lipo-wax infused with natural oils for smooth, hair-free skin with zero irritation."
-  },
-  {
-    id: "s4", type: "Mani-Pedi", title: "Manicure & Pedicure", rating: "4.5", reviews: "1.1K", duration: "1 hr 20 mins", price: "999", oldPrice: "1,799", discount: "44% OFF",
-    image: "https://images.unsplash.com/photo-1604654894610-df63bc536371?w=600&q=80",
-    desc: "Complete cuticle care, nail shaping, relaxing massage, and premium polish application for hands and feet."
+    description: "An intensive exfoliating and nourishing body treatment utilizing organic botanical scrubs and essential oils for ultimate radiance."
   }
 ];
 
@@ -162,13 +152,6 @@ const fallbackOffers = [
     discount: "20% OFF",
     type: "Percentage",
     expiry: "Valid on first booking"
-  },
-  {
-    id: "o2",
-    code: "GLOW500",
-    discount: "₹500 Flat",
-    type: "Flat Amount",
-    expiry: "Min booking ₹1,500"
   }
 ];
 
@@ -190,16 +173,13 @@ const fallbackMakeovers = [
   }
 ];
 
-const trendingTabs = ["All", "Waxing", "Facial", "Body Polishing", "Mani-Pedi", "Hair Care"];
+const trendingTabs = ["All", "Hair", "Skin", "Facial", "Body Care", "Nails", "Grooming", "Beauty"];
 const heroCarouselImages = [
   "https://images.unsplash.com/photo-1544161515-4ab6ce6db874?auto=format&fit=crop&w=1600&q=80",
   "https://images.unsplash.com/photo-1516975080661-460d3c0159f8?auto=format&fit=crop&w=1600&q=80",
   "https://images.unsplash.com/photo-1570172619644-dfd03ed5d881?auto=format&fit=crop&w=1600&q=80"
 ];
 
-// ==========================================
-// ANIMATION VARIANTS
-// ==========================================
 const staggerContainer = {
   hidden: { opacity: 0 },
   show: { opacity: 1, transition: { staggerChildren: 0.1 } }
@@ -217,7 +197,6 @@ export default function Main() {
   const [selectedService, setSelectedService] = useState(null);
   const [toastMsg, setToastMsg] = useState(null);
 
-  // Live Backend Data States (with fallback initializers)
   const [categories, setCategories] = useState(fallbackCategories);
   const [trendingServices, setTrendingServices] = useState(fallbackServices);
   const [offers, setOffers] = useState(fallbackOffers);
@@ -229,19 +208,20 @@ export default function Main() {
       try {
         setIsLoading(true);
         
-        // Fetch Services and Offers concurrently
         const [servicesRes, offersRes] = await Promise.all([
           API.get("/api/services").catch(() => null),
           API.get("/api/offers").catch(() => null),
         ]);
 
-        if (servicesRes?.data?.success && Array.isArray(servicesRes.data.data) && servicesRes.data.data.length > 0) {
-          setTrendingServices(servicesRes.data.data);
+        // Robust payload extraction supporting res.data.data
+        const fetchedServices = servicesRes?.data?.data || servicesRes?.data;
+        if (Array.isArray(fetchedServices) && fetchedServices.length > 0) {
+          setTrendingServices(fetchedServices);
         }
 
-        if (offersRes?.data?.success) {
-          const rawOffers = offersRes.data.data;
-          const activeOffers = rawOffers.filter(o => o.status === "Active");
+        const fetchedOffers = offersRes?.data?.data || offersRes?.data;
+        if (Array.isArray(fetchedOffers)) {
+          const activeOffers = fetchedOffers.filter(o => o.status === "Active" || !o.status);
           if (activeOffers.length > 0) {
             setOffers(activeOffers);
           }
@@ -266,12 +246,16 @@ export default function Main() {
 
   const filteredServices = activeTab === "All" 
     ? trendingServices 
-    : trendingServices.filter(s => s.category === activeTab || s.type === activeTab);
+    : trendingServices.filter(s => {
+        const cat = (s.category || s.type || "").toLowerCase();
+        return cat.includes(activeTab.toLowerCase());
+      });
 
   const handleToggleFavourite = async (service) => {
+    const sId = service.id || service._id;
     try {
-      await API.post("/api/users/favourites", { serviceId: service.id || service._id }).catch(() => {});
-      setToastMsg(`✨ Pinned "${service.title || service.name}" to Favourites!`);
+      await API.post("/api/users/favourites", { serviceId: sId }).catch(() => {});
+      setToastMsg(`✨ Pinned "${service.name || service.title}" to Favourites!`);
     } catch (e) {
       setToastMsg(`✨ Pinned to Favourites!`);
     }
@@ -282,7 +266,7 @@ export default function Main() {
   const handleCopyCoupon = (code) => {
     navigator.clipboard.writeText(code);
     setToastMsg(`📋 Promo code "${code}" copied to clipboard!`);
-    setTimeout(() => setToast(null), 3000);
+    setTimeout(() => setToastMsg(null), 3000);
   };
 
   return (
@@ -368,7 +352,7 @@ export default function Main() {
         <motion.section variants={fadeUp} className="mb-14">
           <div className="flex gap-4 lg:gap-6 overflow-x-auto pb-4 scrollbar-hide snap-x">
             {categories.map((cat) => (
-              <Link to={`/services?category=${cat.id}`} key={cat.id} className="group snap-start shrink-0 flex flex-col items-center gap-3 w-[90px] lg:w-[110px]">
+              <Link to={`/services?category=${cat.name}`} key={cat.id} className="group snap-start shrink-0 flex flex-col items-center gap-3 w-[90px] lg:w-[110px]">
                 <div className="h-[90px] w-[90px] lg:h-[110px] lg:w-[110px] rounded-[1.5rem] bg-white overflow-hidden p-1.5 border border-[#EADBD2] transition-all group-hover:border-[#C56E4E] group-hover:shadow-md">
                   <SafeImage src={cat.image} alt={cat.name} className="w-full h-full object-cover rounded-[1rem] transition-transform duration-500 group-hover:scale-110" />
                 </div>
@@ -419,58 +403,65 @@ export default function Main() {
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
               <AnimatePresence mode="popLayout">
-                {filteredServices.map((service) => (
-                  <motion.div 
-                    layout
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.9 }}
-                    transition={{ duration: 0.2 }}
-                    key={service._id || service.id} 
-                    className="group bg-white rounded-[1.5rem] border border-[#EADBD2] p-3 shadow-sm hover:shadow-xl hover:border-[#C56E4E]/40 transition-all flex flex-col justify-between"
-                  >
-                    <div>
-                      <div className="relative h-[180px] w-full rounded-xl overflow-hidden mb-4 bg-[#FFF6F0]">
-                        <SafeImage src={service.image} alt={service.title || service.name} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
-                        <button 
-                          onClick={() => handleToggleFavourite(service)}
-                          className="absolute top-3 right-3 bg-white/90 backdrop-blur-md p-2 rounded-full text-[#C56E4E] hover:bg-[#C56E4E] hover:text-white transition-colors shadow-sm cursor-pointer"
+                {filteredServices.map((service) => {
+                  const sName = service.name || service.title || "Service";
+                  const sPrice = service.price || "0";
+                  const sDuration = service.duration || "45 mins";
+                  const sImage = service.image;
+
+                  return (
+                    <motion.div 
+                      layout
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.9 }}
+                      transition={{ duration: 0.2 }}
+                      key={service.id || service._id} 
+                      className="group bg-white rounded-[1.5rem] border border-[#EADBD2] p-3 shadow-sm hover:shadow-xl hover:border-[#C56E4E]/40 transition-all flex flex-col justify-between"
+                    >
+                      <div>
+                        <div className="relative h-[180px] w-full rounded-xl overflow-hidden mb-4 bg-[#FFF6F0]">
+                          <SafeImage src={sImage} alt={sName} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
+                          <button 
+                            onClick={() => handleToggleFavourite(service)}
+                            className="absolute top-3 right-3 bg-white/90 backdrop-blur-md p-2 rounded-full text-[#C56E4E] hover:bg-[#C56E4E] hover:text-white transition-colors shadow-sm cursor-pointer"
+                          >
+                            <Heart size={16} />
+                          </button>
+                        </div>
+
+                        <div className="px-2">
+                          <h3 className="font-serif text-[17px] font-bold text-[#2D2623] leading-tight mb-2">{sName}</h3>
+                          
+                          <div className="flex items-center gap-3 text-xs text-[#8C7A70] mb-4">
+                            <span className="flex items-center gap-1 font-bold text-[#E5A024]">
+                              <Star size={12} className="fill-current" /> {service.rating || "5.0"} <span className="text-[#8C7A70] font-medium">({service.reviews || "0"})</span>
+                            </span>
+                            <span className="flex items-center gap-1 font-medium">
+                              <Clock size={12} /> {sDuration}
+                            </span>
+                          </div>
+
+                          <div className="flex items-end gap-2 mb-5">
+                            <span className="font-serif text-2xl font-bold text-[#2D2623]">₹{sPrice}</span>
+                            {service.oldPrice && <span className="text-xs font-bold text-[#A39292] line-through mb-1">₹{service.oldPrice}</span>}
+                            {service.discount && <span className="text-[10px] font-bold text-[#1E9E4A] mb-1 ml-1">{service.discount}</span>}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="px-2 pb-2">
+                        <motion.button
+                          whileTap={{ scale: 0.95 }}
+                          onClick={() => setSelectedService(service)}
+                          className="w-full py-3 rounded-full bg-[#C56E4E] text-white text-xs font-bold uppercase tracking-wider shadow-md hover:bg-[#A35539] transition-colors flex items-center justify-center gap-2 cursor-pointer"
                         >
-                          <Heart size={16} />
-                        </button>
+                          <Info size={15} /> Get More
+                        </motion.button>
                       </div>
-
-                      <div className="px-2">
-                        <h3 className="font-serif text-[17px] font-bold text-[#2D2623] leading-tight mb-2">{service.title || service.name}</h3>
-                        
-                        <div className="flex items-center gap-3 text-xs text-[#8C7A70] mb-4">
-                          <span className="flex items-center gap-1 font-bold text-[#E5A024]">
-                            <Star size={12} className="fill-current" /> {service.rating || "4.8"} <span className="text-[#8C7A70] font-medium">({service.reviews || "1.2K"})</span>
-                          </span>
-                          <span className="flex items-center gap-1 font-medium">
-                            <Clock size={12} /> {service.duration}
-                          </span>
-                        </div>
-
-                        <div className="flex items-end gap-2 mb-5">
-                          <span className="font-serif text-2xl font-bold text-[#2D2623]">₹{service.price}</span>
-                          {service.oldPrice && <span className="text-xs font-bold text-[#A39292] line-through mb-1">₹{service.oldPrice}</span>}
-                          {service.discount && <span className="text-[10px] font-bold text-[#1E9E4A] mb-1 ml-1">{service.discount}</span>}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="px-2 pb-2">
-                      <motion.button
-                        whileTap={{ scale: 0.95 }}
-                        onClick={() => setSelectedService(service)}
-                        className="w-full py-3 rounded-full bg-[#C56E4E] text-white text-xs font-bold uppercase tracking-wider shadow-md hover:bg-[#A35539] transition-colors flex items-center justify-center gap-2 cursor-pointer"
-                      >
-                        <Info size={15} /> Get More
-                      </motion.button>
-                    </div>
-                  </motion.div>
-                ))}
+                    </motion.div>
+                  );
+                })}
               </AnimatePresence>
             </div>
           )}
@@ -608,7 +599,7 @@ export default function Main() {
 
       </motion.main>
 
-      {/* ================= SERVICE DETAILS MODAL W/ AUTO-PLAY VIDEO WALKTHROUGH ================= */}
+      {/* ================= SERVICE DETAILS MODAL ================= */}
       <AnimatePresence>
         {selectedService && (
           <>
@@ -629,7 +620,9 @@ export default function Main() {
               <div className="flex items-center justify-between pb-4 border-b border-[#EADBD2] mb-6">
                 <div className="flex items-center gap-2">
                   <Sparkles size={16} className="text-[#C56E4E]" />
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-[#C56E4E]">{selectedService.type || selectedService.category} Ritual Walkthrough</span>
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-[#C56E4E]">
+                    {selectedService.category || selectedService.type || "General"} Ritual Walkthrough
+                  </span>
                 </div>
                 <button 
                   onClick={() => setSelectedService(null)} 
@@ -650,12 +643,12 @@ export default function Main() {
                 />
               </div>
 
-              <h2 className="font-serif text-2xl font-bold text-[#2D2623] mb-2">{selectedService.title || selectedService.name}</h2>
-              <p className="text-xs font-medium text-[#8C7A70] leading-relaxed mb-6">{selectedService.desc || selectedService.description}</p>
+              <h2 className="font-serif text-2xl font-bold text-[#2D2623] mb-2">{selectedService.name || selectedService.title}</h2>
+              <p className="text-xs font-medium text-[#8C7A70] leading-relaxed mb-6">{selectedService.description || selectedService.desc}</p>
 
               <div className="bg-[#FCF9F6] rounded-2xl p-4 border border-[#EADBD2] text-xs space-y-2 mb-6">
-                <div className="flex justify-between"><span className="text-[#8C7A70]">Duration:</span> <strong className="text-[#2D2623]">{selectedService.duration}</strong></div>
-                <div className="flex justify-between"><span className="text-[#8C7A70]">Customer Rating:</span> <strong className="text-[#E5A024]">★ {selectedService.rating || "4.8"} ({selectedService.reviews || "1.2K"} verified reviews)</strong></div>
+                <div className="flex justify-between"><span className="text-[#8C7A70]">Duration:</span> <strong className="text-[#2D2623]">{selectedService.duration || "45 mins"}</strong></div>
+                <div className="flex justify-between"><span className="text-[#8C7A70]">Customer Rating:</span> <strong className="text-[#E5A024]">★ {selectedService.rating || "5.0"} ({selectedService.reviews || "0"} reviews)</strong></div>
                 <div className="flex justify-between"><span className="text-[#8C7A70]">Special Price:</span> <strong className="text-[#C56E4E] text-base">₹{selectedService.price}</strong></div>
               </div>
 
@@ -668,7 +661,7 @@ export default function Main() {
                 </button>
 
                 <Link
-                  to="/book-appointment"
+                  to={`/book-appointment?service=${selectedService.id || selectedService._id}`}
                   onClick={() => setSelectedService(null)}
                   className="flex-1 py-3.5 rounded-full bg-[#C56E4E] text-white text-xs font-bold uppercase tracking-wider shadow-lg hover:bg-[#A35539] transition-colors flex items-center justify-center gap-2 text-center"
                 >

@@ -11,7 +11,10 @@ import {
   MapPin, 
   X,
   Share2,
-  CalendarDays
+  CalendarDays,
+  User,
+  Phone,
+  Mail
 } from "lucide-react";
 
 const staggerContainer = {
@@ -37,7 +40,7 @@ export default function BookingConfirmation() {
         console.error("Error parsing confirmation data:", e);
       }
     } else {
-      // Fallback default state for preview / demonstration
+      // Fallback default state for preview / demonstration with customer details included
       setBooking({
         id: "QBBRWULJAU",
         passCode: "BV-8492026",
@@ -46,7 +49,10 @@ export default function BookingConfirmation() {
         date: "27 Sep",
         time: "02:15 PM - 03:30 PM",
         amount: 2499,
-        address: "BeautyVibe Luxury Lounge, Near HDFC ATM, Tiruvuru"
+        address: "BeautyVibe Luxury Lounge, Near HDFC ATM, Tiruvuru",
+        customerName: "Shaik Sameer",
+        customerPhone: "+91 98765 43210",
+        customerEmail: "sameer@beautyvibe.com"
       });
     }
   }, []);
@@ -65,7 +71,7 @@ export default function BookingConfirmation() {
 
   // The unique string that the admin scanner will read and verify
   const passCodeStr = booking.passCode || booking.id || "BV-8492026";
-  
+   
   // Real-time API generated QR code (100% scannable by the admin module)
   const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(passCodeStr)}&margin=10`;
 
@@ -79,7 +85,7 @@ export default function BookingConfirmation() {
       <div className="max-w-md mx-auto px-4 pt-6 flex justify-end relative z-20">
         <button 
           onClick={() => navigate("/")}
-          className="h-10 w-10 rounded-full bg-white border border-[#EADBD2] shadow-sm flex items-center justify-center text-[#8C7A70] hover:text-[#C56E4E] hover:border-[#C56E4E]/30 transition-all"
+          className="h-10 w-10 rounded-full bg-white border border-[#EADBD2] shadow-sm flex items-center justify-center text-[#8C7A70] hover:text-[#C56E4E] hover:border-[#C56E4E]/30 transition-all cursor-pointer"
         >
           <X size={20} />
         </button>
@@ -106,7 +112,7 @@ export default function BookingConfirmation() {
           variants={fadeUp} 
           className="relative bg-gradient-to-b from-[#2D2623] to-[#1A1513] rounded-[2rem] border border-[#4A3F39] shadow-2xl overflow-visible text-white"
         >
-          {/* Decorative Left Ticket Notch (Matches the #FCF9F6 outer background) */}
+          {/* Decorative Left Ticket Notch */}
           <div className="absolute top-[58%] -left-[14px] w-[26px] h-[26px] rounded-full bg-[#FCF9F6] shadow-inner z-10" />
           {/* Decorative Right Ticket Notch */}
           <div className="absolute top-[58%] -right-[14px] w-[26px] h-[26px] rounded-full bg-[#FCF9F6] shadow-inner z-10" />
@@ -125,7 +131,6 @@ export default function BookingConfirmation() {
           <div className="flex flex-col items-center justify-center py-8 relative">
             <div className="relative p-1 rounded-2xl bg-gradient-to-br from-[#C56E4E] to-[#E5A024] shadow-[0_0_30px_rgba(197,110,78,0.25)]">
               <div className="p-2 rounded-[14px] bg-white">
-                {/* Real QR Code Image rendered from API */}
                 <img 
                   src={qrCodeUrl} 
                   alt="Booking QR Code Pass" 
@@ -167,6 +172,30 @@ export default function BookingConfirmation() {
               </div>
             </div>
 
+            {/* Customer Details Box */}
+            <div className="bg-white/5 rounded-2xl p-4 border border-white/10 space-y-2.5">
+              <p className="text-[10px] uppercase tracking-wider text-[#C56E4E] font-bold">Client Details</p>
+              
+              <div className="flex items-center gap-2.5 text-xs text-white/90">
+                <User size={14} className="text-[#C56E4E] shrink-0" />
+                <span className="font-semibold">{booking.customerName || booking.name || "Valued Client"}</span>
+              </div>
+
+              {(booking.customerPhone || booking.phone) && (
+                <div className="flex items-center gap-2.5 text-xs text-white/90">
+                  <Phone size={14} className="text-[#C56E4E] shrink-0" />
+                  <span>{booking.customerPhone || booking.phone}</span>
+                </div>
+              )}
+
+              {(booking.customerEmail || booking.email) && (
+                <div className="flex items-center gap-2.5 text-xs text-white/90">
+                  <Mail size={14} className="text-[#C56E4E] shrink-0" />
+                  <span className="truncate">{booking.customerEmail || booking.email}</span>
+                </div>
+              )}
+            </div>
+
             {/* Schedule & Location */}
             <div className="bg-white/5 rounded-2xl p-4 border border-white/10 space-y-3">
               <div className="flex items-center gap-3">
@@ -201,7 +230,7 @@ export default function BookingConfirmation() {
             Track My Appointment 
             <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
           </Link>
-          
+           
           <div className="flex gap-3">
             <Link
               to="/main"
@@ -209,7 +238,7 @@ export default function BookingConfirmation() {
             >
               <Home size={14} /> Home
             </Link>
-            
+             
             <button
               onClick={() => {
                 if (navigator.share) {

@@ -5,7 +5,6 @@ import {
   CalendarDays, 
   Clock, 
   House, 
-  Store, 
   Sparkles, 
   CreditCard, 
   Smartphone, 
@@ -13,12 +12,13 @@ import {
   ArrowRight,
   QrCode,
   ShieldCheck,
-  Check,
   Plus,
   Calendar,
   ChevronDown,
   RefreshCw,
-  AlertCircle
+  AlertCircle,
+  MapPin,
+  Navigation
 } from "lucide-react";
 import { io } from "socket.io-client";
 import axios from "axios";
@@ -57,14 +57,15 @@ export default function BookAppointment() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
   const initialServiceId = params.get("service") || "";
-  
+   
   const [allServices, setAllServices] = useState([]);
   const [bookedSlots, setBookedSlots] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedServiceIds, setSelectedServiceIds] = useState([]);
   const [date, setDate] = useState("2026-10-20");
   const [time, setTime] = useState("");
-  const [type, setType] = useState("SALON");
+  const [address, setAddress] = useState("");
+  const [locating, setLocating] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState("upi");
   const [error, setError] = useState("");
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
@@ -91,7 +92,7 @@ export default function BookAppointment() {
             image: s.image || "https://images.unsplash.com/photo-1562322140-8baeececf3df?w=200&q=80"
           }));
           setAllServices(formatted);
-          
+           
           const target = formatted.find(s => s.id === initialServiceId) || formatted[0];
           if (target) {
             setSelectedServiceIds([target.id]);
@@ -99,7 +100,7 @@ export default function BookAppointment() {
         }
 
         if (slotsRes.data?.data) {
-          setBookedSlots(slotsRes.data.data); // e.g. ["11:00 AM", "02:00 PM"]
+          setBookedSlots(slotsRes.data.data);
         }
       } catch (err) {
         console.error("Failed to load booking data:", err);
@@ -129,7 +130,42 @@ export default function BookAppointment() {
     };
   }, [date, initialServiceId]);
 
-  // Separate Selected vs Recommended
+  // Capture Live Location via Geolocation API
+  const handleDetectLocation = () => {
+    if (!navigator.geolocation) {
+      alert("Geolocation is not supported by your browser");
+      return;
+    }
+
+    setLocating(true);
+    setError("");
+
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const { latitude, longitude } = position.coords;
+        try {
+          // Use OpenStreetMap Nominatim reverse geocoding API for exact human-readable address
+          const res = await axios.get(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
+          if (res.data && res.data.display_name) {
+            setAddress(res.data.display_name);
+          } else {
+            setAddress(`Lat: ${latitude.toFixed(4)}, Lon: ${longitude.toFixed(4)}`);
+          }
+        } catch (e) {
+          setAddress(`Lat: ${latitude.toFixed(4)}, Lon: ${longitude.toFixed(4)}`);
+        } finally {
+          setLocating(false);
+        }
+      },
+      (err) => {
+        console.error("Geolocation error:", err);
+        setError("Unable to retrieve your location. Please type your address manually.");
+        setLocating(false);
+      },
+      { timeout: 10000, enableHighAccuracy: true }
+    );
+  };
+
   const primarySelectedId = selectedServiceIds[0];
   const primaryService = allServices.find((s) => s.id === primarySelectedId) || allServices[0] || { id: "", name: "Select Ritual", price: 0, duration: "45 min", image: "" };
   const additionalSelectedIds = selectedServiceIds.slice(1);
@@ -161,6 +197,10 @@ export default function BookAppointment() {
       setError("Selected time slot is already booked. Please pick another time.");
       return;
     }
+    if (!address.trim()) {
+      setError("Please provide your doorstep delivery address or use live location.");
+      return;
+    }
     if (!primaryService.id) {
       setError("Please select at least one valid service.");
       return;
@@ -176,7 +216,8 @@ export default function BookAppointment() {
         additionalServices: additionalSelectedServices.map(s => s.name),
         amount: totalCalculatedPrice,
         datetime: `${date}T${time}`,
-        type,
+        type: "HOME",
+        address,
         paymentMethod
       };
 
@@ -188,7 +229,8 @@ export default function BookAppointment() {
           price: totalCalculatedPrice,
           date,
           time,
-          type,
+          type: "HOME",
+          address,
           paymentMethod
         }));
         navigate("/checkout");
@@ -202,7 +244,8 @@ export default function BookAppointment() {
         price: totalCalculatedPrice, 
         date, 
         time, 
-        type, 
+        type: "HOME",
+        address,
         paymentMethod
       }));
       navigate("/checkout");
@@ -235,10 +278,10 @@ export default function BookAppointment() {
           <div>
             <div className="inline-flex items-center gap-2 rounded-full bg-[#FFF6F0] border border-[#EADBD2] px-4 py-1.5 mb-3 shadow-sm">
               <Sparkles size={14} className="text-[#C56E4E]" />
-              <span className="text-[10px] font-bold uppercase tracking-widest text-[#8C7A70]">Your Self-Care Ritual</span>
+              <span className="text-[10px] font-bold uppercase tracking-widest text-[#8C7A70]">Doorstep Luxury Experience</span>
             </div>
-            <h1 className="font-serif text-3xl sm:text-4xl font-bold text-[#2D2623]">Book an Appointment</h1>
-            <p className="mt-2 text-xs sm:text-sm font-medium text-[#8C7A70]">Customize your ritual, pick your preferred live schedule, and secure your booking pass.</p>
+            <h1 className="font-serif text-3xl sm:text-4xl font-bold text-[#2D2623]">Book Doorstep Service</h1>
+            <p className="mt-2 text-xs sm:text-sm font-medium text-[#8C7A70]">Certified experts deliver salon rituals directly to your home with premium equipment.</p>
           </div>
 
           <div className="flex items-center gap-1.5 bg-white border border-[#EADBD2] px-4 py-2 rounded-2xl text-xs font-bold text-[#5C4841] shadow-sm w-fit">
@@ -306,32 +349,35 @@ export default function BookAppointment() {
               </div>
             )}
 
-            {/* 2. LOCATION TYPE */}
+            {/* 2. DOORSTEP ADDRESS WITH LIVE LOCATION CAPTURE */}
             <div>
-              <h2 className="font-serif text-lg font-bold text-[#2D2623] mb-4">2. Select Service Location</h2>
-              <div className="grid grid-cols-2 gap-3">
-                {[
-                  ["SALON", Store, "At the Salon"], 
-                  ["HOME", House, "At my Doorstep"]
-                ].map(([value, Icon, label]) => (
-                  <button 
-                    type="button" 
-                    key={value} 
-                    onClick={() => setType(value)} 
-                    className={`rounded-2xl border p-4 flex flex-col items-center text-center transition-all cursor-pointer ${
-                      type === value 
-                        ? "border-[#C56E4E] bg-[#FFF6F0] shadow-md ring-2 ring-[#C56E4E]/20 text-[#C56E4E]" 
-                        : "border-[#EADBD2] hover:border-[#C56E4E]/50 text-[#8C7A70] bg-white"
-                    }`}
-                  >
-                    <Icon size={22} className="mb-2" />
-                    <span className="text-xs font-bold text-[#2D2623]">{label}</span>
-                  </button>
-                ))}
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="font-serif text-lg font-bold text-[#2D2623]">2. Doorstep Delivery Address</h2>
+                <button
+                  type="button"
+                  onClick={handleDetectLocation}
+                  disabled={locating}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#FFF6F0] border border-[#C56E4E]/40 text-[#C56E4E] text-xs font-bold hover:bg-[#FFF0E7] transition-all cursor-pointer shadow-sm disabled:opacity-50"
+                >
+                  <Navigation size={13} className={locating ? "animate-spin" : ""} />
+                  {locating ? "Detecting Location..." : "Use Current Live Location"}
+                </button>
+              </div>
+
+              <div className="relative">
+                <MapPin size={18} className="absolute left-4 top-4 text-[#8C7A70]" />
+                <textarea
+                  rows="3"
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  placeholder="Enter your exact street address, apartment number, and landmark..."
+                  className="w-full rounded-2xl border border-[#EADBD2] bg-[#FCF9F6] p-4 pl-11 text-xs font-semibold text-[#2D2623] outline-none focus:border-[#C56E4E] shadow-sm resize-none"
+                  required
+                />
               </div>
             </div>
 
-            {/* 3. SCHEDULE & AVAILABLE TIME SLOTS (WITH STRIKE-THROUGH & HOVER TOOLTIP) */}
+            {/* 3. SCHEDULE & AVAILABLE TIME SLOTS */}
             <div>
               <h2 className="font-serif text-lg font-bold text-[#2D2623] mb-4">3. Preferred Schedule</h2>
               
@@ -432,7 +478,6 @@ export default function BookAppointment() {
                             {slot}
                           </button>
 
-                          {/* Hover Tooltip: "Slot not available" */}
                           <AnimatePresence>
                             {isBooked && hoveredSlot === slot && (
                               <motion.div
@@ -498,8 +543,8 @@ export default function BookAppointment() {
                   <QrCode size={20} className="text-[#E5A024]" />
                   <span className="text-[10px] font-bold uppercase tracking-widest text-[#D3C5BF]">VIP Pass Preview</span>
                 </div>
-                <span className="text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-full bg-white/10 text-[#E5A024]">
-                  {type === "SALON" ? "Salon Visit" : "Doorstep"}
+                <span className="text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-full bg-[#C56E4E]/20 text-[#E5A024] border border-[#C56E4E]/30">
+                  Doorstep Home Service
                 </span>
               </div>
 
@@ -521,6 +566,11 @@ export default function BookAppointment() {
                     <span className="text-[9px] uppercase tracking-wider text-[#A39292] block">Time Slot</span>
                     <strong className="text-white">{time || "Select Time..."}</strong>
                   </div>
+                </div>
+
+                <div className="pt-3 border-t border-white/10">
+                  <span className="text-[9px] uppercase tracking-wider text-[#A39292] block mb-1">Delivery Address</span>
+                  <p className="text-xs text-white/90 line-clamp-2">{address || "Tap 'Use Current Live Location' or type address above."}</p>
                 </div>
 
                 <div className="pt-4 border-t border-white/10 flex items-center justify-between">

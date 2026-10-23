@@ -8,10 +8,10 @@ import {
   ArrowLeft,
   CalendarDays,
   Clock,
-  Store,
   House,
   AlertCircle,
   RefreshCw,
+  MapPin,
 } from "lucide-react";
 import API from "../services/axios";
 
@@ -25,9 +25,6 @@ const CONFIRMED_KEY = "beautyvibe_last_confirmed";
 
 const DEFAULT_SERVICE_IMAGE =
   "https://images.unsplash.com/photo-1570172619644-dfd03ed5d881?w=600&q=85";
-
-const DEFAULT_AVATAR =
-  "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&q=80";
 
 // ======================================================
 // ANIMATIONS
@@ -175,6 +172,7 @@ export default function Checkout() {
       const amount = Number(bookingDraft.price);
       const appointmentDate = bookingDraft.date;
       const appointmentTime = bookingDraft.time;
+      const address = bookingDraft.address || "";
 
       if (!serviceName.trim()) {
         throw new Error("Please select a valid service.");
@@ -192,19 +190,20 @@ export default function Checkout() {
         throw new Error("Please select an appointment time.");
       }
 
-      const serviceType =
-        String(bookingDraft.type || "SALON").toUpperCase() === "HOME"
-          ? "HOME"
-          : "SALON";
+      if (!address.trim()) {
+        throw new Error("Doorstep delivery address is required.");
+      }
 
       const payload = {
         serviceId: bookingDraft.serviceId || 1,
         serviceName: serviceName.trim(),
         category: bookingDraft.category || "General",
         amount,
-        type: serviceType,
+        type: "HOME",
         date: appointmentDate,
         time: appointmentTime,
+        address: address.trim(),
+        paymentMethod: bookingDraft.paymentMethod || "upi",
         requestId,
       };
 
@@ -335,9 +334,7 @@ export default function Checkout() {
 
   const category = bookingDraft.category || "Beauty Ritual";
   const price = Number(bookingDraft.price) || 0;
-
-  const isHomeService =
-    String(bookingDraft.type || "SALON").toUpperCase() === "HOME";
+  const address = bookingDraft.address || "No address provided";
 
   // ====================================================
   // CHECKOUT UI
@@ -376,20 +373,19 @@ export default function Checkout() {
               </div>
 
               <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#C56E4E] sm:text-xs">
-                BeautyVibe · Secure Checkout
+                BeautyVibe · Secure Doorstep Checkout
               </span>
             </div>
 
             <h1 className="font-serif text-2xl font-bold leading-tight sm:text-3xl">
               Review & Confirm
               <span className="mt-1 block text-[#C56E4E]">
-                Your Appointment
+                Your Home Appointment
               </span>
             </h1>
 
             <p className="mt-3 max-w-lg text-xs leading-6 text-[#8C7A70] sm:text-sm">
-              Review your selected service, appointment schedule, and total
-              before confirming your booking.
+              Review your doorstep service schedule and address before confirming your booking.
             </p>
           </div>
 
@@ -442,23 +438,23 @@ export default function Checkout() {
                     </span>
                   </div>
 
-                  <div className="flex items-center gap-2 text-xs text-[#8C7A70]">
-                    {isHomeService ? (
-                      <House
-                        size={14}
-                        className="shrink-0 text-[#C56E4E]"
-                      />
-                    ) : (
-                      <Store
-                        size={14}
-                        className="shrink-0 text-[#C56E4E]"
-                      />
-                    )}
+                  <div className="flex items-start gap-2 text-xs text-[#8C7A70]">
+                    <MapPin
+                      size={14}
+                      className="mt-0.5 shrink-0 text-[#C56E4E]"
+                    />
+                    <span className="leading-relaxed text-[#2D2623]">
+                      {address}
+                    </span>
+                  </div>
 
+                  <div className="flex items-center gap-2 text-xs text-[#8C7A70]">
+                    <House
+                      size={14}
+                      className="shrink-0 text-[#C56E4E]"
+                    />
                     <span className="font-semibold text-[#2D2623]">
-                      {isHomeService
-                        ? "Home Service"
-                        : "Salon Service"}
+                      Doorstep Home Service
                     </span>
                   </div>
                 </div>
@@ -478,7 +474,7 @@ export default function Checkout() {
 
               <div className="flex items-center justify-between gap-4 text-xs sm:text-sm">
                 <span className="text-[#8C7A70]">
-                  Convenience & Hygiene Kit
+                  Doorstep Travel & Equipment Kit
                 </span>
                 <span className="font-bold text-[#1E9E4A]">
                   FREE
@@ -496,7 +492,7 @@ export default function Checkout() {
                 </div>
 
                 <p className="mt-2 text-[10px] leading-5 text-[#8C7A70]">
-                  The amount shown is based on your selected service.
+                  Payment method selected: <strong className="uppercase">{bookingDraft.paymentMethod || "UPI"}</strong>
                 </p>
               </div>
             </div>
@@ -546,7 +542,7 @@ export default function Checkout() {
               ) : (
                 <>
                   <ShieldCheck size={16} />
-                  Confirm Appointment
+                  Confirm Home Appointment
                   <CheckCircle2
                     size={16}
                     className="transition-transform group-hover:scale-110"
