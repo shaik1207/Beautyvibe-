@@ -12,7 +12,10 @@ import {
   Navigation,
   Compass,
   User,
-  PartyPopper
+  PartyPopper,
+  CheckCircle2,
+  Calendar,
+  Clock
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useSidebar } from "../context/SidebarContext";
@@ -47,12 +50,31 @@ const trendingServices = [
 export default function Navbar() {
   const sidebarContext = useSidebar();
   const setMobileOpen = sidebarContext?.setMobileOpen || (() => {});
-  const { user } = useAuth();
+  
+  // Robust Auth Context Sync (matches currentUser from AuthContext)
+  const { currentUser } = useAuth();
+  
   const navigate = useNavigate();
   const location = useLocation();
   const isHomepage = location.pathname === "/";
 
   const [showNotifications, setShowNotifications] = useState(false);
+  const [notifications, setNotifications] = useState([
+    {
+      id: 1,
+      title: "Upcoming Appointment",
+      description: "Korean Glow Facial booked for tomorrow at 11:00 AM.",
+      time: "2h ago",
+      read: false
+    },
+    {
+      id: 2,
+      title: "Welcome to BeautyVibe!",
+      description: "Explore our signature spa packages and exclusive offers.",
+      time: "1d ago",
+      read: true
+    }
+  ]);
 
   // Real-time Location States
   const [currentLocation, setCurrentLocation] = useState("ICMR Campus, Hyderabad");
@@ -71,19 +93,19 @@ export default function Navbar() {
     return !sessionStorage.getItem(INTRO_SESSION_KEY);
   });
 
-  // Determine if the user is brand new vs returning based on Firebase metadata
+  // Determine if the user is brand new vs returning based on creation metadata
   const isNewUser = (() => {
-    if (!user?.metadata?.creationTime || !user?.metadata?.lastSignInTime) return false;
-    const created = new Date(user.metadata.creationTime).getTime();
-    const signedIn = new Date(user.metadata.lastSignInTime).getTime();
-    // If created within the last 2 minutes, consider them a new user
-    return Math.abs(created - signedIn) < 120000;
+    if (!currentUser?.createdAt && !currentUser?.metadata?.creationTime) return false;
+    const createdTime = currentUser.createdAt || currentUser.metadata?.creationTime;
+    const created = new Date(createdTime).getTime();
+    const now = new Date().getTime();
+    // If created within the last 5 minutes, consider them a new user
+    return Math.abs(now - created) < 300000;
   })();
 
-  // iOS-style Avatar Fallback using DiceBear seed derived from user name
-  const userAvatarUrl = user?.name || user?.email
-    ? `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(user.name || user.email)}&backgroundColor=FFF6F0`
-    : null;
+  const userAvatarUrl = currentUser?.avatar || currentUser?.photoURL || (currentUser?.name || currentUser?.email
+    ? `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(currentUser.name || currentUser.email)}&backgroundColor=FFF6F0`
+    : null);
 
   // Automatically detect location on initial mount
   useEffect(() => {
@@ -101,9 +123,7 @@ export default function Navbar() {
             // Keep default fallback if reverse geocoding fails
           }
         },
-        () => {
-          // Permission denied or error, keep default location
-        },
+        () => {},
         { timeout: 8000, enableHighAccuracy: false }
       );
     }
@@ -170,12 +190,18 @@ export default function Navbar() {
         );
         setSearchResults(results);
         setIsSearching(false);
-      }, 600);
+      }, 400);
     } else {
       setSearchResults([]);
       setIsSearching(false);
     }
   };
+
+  const markAllNotificationsRead = () => {
+    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+  };
+
+  const unreadCount = notifications.filter(n => !n.read).length;
 
   const SearchDrawerContent = () => (
     <div className="w-full">
@@ -282,7 +308,7 @@ export default function Navbar() {
         ) : (
           <div className="w-full px-3 lg:px-6 pt-2 lg:pt-4 z-40 relative">
             <header className={`relative flex h-14 lg:h-16 w-full items-center justify-between bg-white/75 px-4 lg:px-8 shadow-[0_6px_24px_rgba(0,0,0,0.05)] backdrop-blur-2xl border border-white/65 transition-all duration-500 ${
-              isHomepage && !user ? "rounded-2xl max-w-[1400px] mx-auto" : "rounded-full max-w-[1240px] mx-auto"
+              isHomepage && !currentUser ? "rounded-2xl max-w-[1400px] mx-auto" : "rounded-full max-w-[1240px] mx-auto"
             }`}>
               {/* MOBILE LEFT: Menu + Logo */}
               <div className="flex lg:hidden items-center gap-2 pl-1">
@@ -308,7 +334,7 @@ export default function Navbar() {
               </div>
 
               {/* DESKTOP CENTER: Search Input (Only shown if user is logged in) */}
-              {user && (
+              {currentUser && (
                 <div className="hidden lg:flex flex-1 max-w-sm mx-4">
                   <button 
                     onClick={() => setIsSearchOpen(true)}
@@ -322,7 +348,7 @@ export default function Navbar() {
 
               {/* RIGHT ACTIONS */}
               <div className="flex items-center gap-2.5 lg:gap-4 pr-0.5 ml-auto">
-                {!user ? (
+                {!currentUser ? (
                   <div className="flex items-center gap-2.5">
                     <Link to="/login" className="px-4 py-2 text-xs font-bold text-[#5C4841] hover:text-[#C56E4E] transition-colors">
                       Log In
@@ -340,24 +366,52 @@ export default function Navbar() {
                       <Search size={18} />
                     </button>
                     
-                    {/* Notifications Button */}
-                    <div className="relative cursor-pointer group flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-white/80">
-                      <button onClick={() => setShowNotifications(!showNotifications)}>
+                    {/* Notifications Button & Center */}
+                    <div className="relative">
+                      <button 
+                        onClick={() => setShowNotifications(!showNotifications)}
+                        className="relative group flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-white/80"
+                      >
                         <Bell size={18} className="text-[#5C4841] group-hover:text-[#C56E4E] transition-colors" />
-                        <span className="absolute top-2 right-2 h-2 w-2 rounded-full bg-[#C56E4E] border-[1.5px] border-white" />
+                        {unreadCount > 0 && (
+                          <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-[#C56E4E] ring-2 ring-white animate-pulse" />
+                        )}
                       </button>
+
                       <AnimatePresence>
                         {showNotifications && (
                           <motion.div
                             initial={{ opacity: 0, y: 10, scale: 0.95 }}
                             animate={{ opacity: 1, y: 0, scale: 1 }}
                             exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                            className="absolute right-0 top-12 w-64 lg:w-72 rounded-3xl border border-[#EADBD2] bg-white p-4 shadow-2xl z-50 cursor-default"
+                            className="absolute right-0 top-12 w-72 sm:w-80 rounded-[2rem] border border-[#EADBD2] bg-white p-5 shadow-2xl z-50 cursor-default"
                           >
-                            <p className="font-serif text-base font-bold text-[#2D2623] mb-3">Notifications</p>
-                            <div className="rounded-2xl bg-[#FFF6F0] p-3 border border-[#EADBD2]">
-                              <p className="text-xs font-bold text-[#2D2623]">Upcoming Appointment</p>
-                              <p className="mt-0.5 text-[11px] text-[#8C7A70]">Hair Spa with Marcus tomorrow at 11:00 AM.</p>
+                            <div className="flex items-center justify-between pb-3 border-b border-[#EADBD2] mb-3">
+                              <span className="font-serif text-sm font-bold text-[#2D2623]">Notifications</span>
+                              {unreadCount > 0 && (
+                                <button 
+                                  onClick={markAllNotificationsRead} 
+                                  className="text-[10px] font-bold text-[#C56E4E] hover:underline"
+                                >
+                                  Mark all as read
+                                </button>
+                              )}
+                            </div>
+                            <div className="space-y-2.5 max-h-[60vh] overflow-y-auto">
+                              {notifications.map((n) => (
+                                <div 
+                                  key={n.id} 
+                                  className={`rounded-2xl p-3 border transition-colors ${n.read ? "bg-white border-[#EADBD2]/60 opacity-75" : "bg-[#FFF6F0] border-[#EADBD2]"}`}
+                                >
+                                  <div className="flex items-center justify-between mb-1">
+                                    <p className="text-xs font-bold text-[#2D2623]">{n.title}</p>
+                                    <span className="text-[9px] text-[#8C7A70] flex items-center gap-1">
+                                      <Clock size={10} /> {n.time}
+                                    </span>
+                                  </div>
+                                  <p className="text-[11px] text-[#5C4841] leading-relaxed">{n.description}</p>
+                                </div>
+                              ))}
                             </div>
                           </motion.div>
                         )}
@@ -383,7 +437,7 @@ export default function Navbar() {
                            {isNewUser ? (
                              <>Welcome! <PartyPopper size={12} className="text-[#C56E4E]" /></>
                            ) : (
-                             user?.name ? `Hi, ${user.name.split(' ')[0]}` : "My Account"
+                             currentUser?.name ? `Hi, ${currentUser.name.split(' ')[0]}` : "My Account"
                            )}
                          </span>
                          <span className="text-[8px] font-bold text-[#8C7A70] uppercase tracking-wider">

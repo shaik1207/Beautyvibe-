@@ -10,13 +10,34 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
-// Initialize Firebase (preventing duplicate initialization in hot-reload environments)
-const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
+const requiredConfig = [
+  "apiKey",
+  "authDomain",
+  "projectId",
+  "appId",
+];
+
+const missingConfig = requiredConfig.filter(
+  (key) => !firebaseConfig[key]
+);
+
+if (missingConfig.length > 0) {
+  throw new Error(
+    `Firebase configuration is missing: ${missingConfig.join(", ")}. ` +
+    "Check your frontend .env file."
+  );
+}
+
+const app = getApps().length
+  ? getApp()
+  : initializeApp(firebaseConfig);
 
 export const auth = getAuth(app);
+
 export const googleProvider = new GoogleAuthProvider();
 
-// Optional: Configure Google provider preferences if needed
 googleProvider.setCustomParameters({
   prompt: "select_account",
 });
+
+export default app;

@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { motion, AnimatePresence } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   Home,
   CalendarDays,
@@ -44,7 +44,7 @@ const menuItems = [
   { label: "Explore Services", to: "/services", icon: Flower2 },
   { label: "Favourites", to: "/favourites", icon: Heart },
   { label: "Packages", to: "/packages", icon: Gift },
-  { label: "Help&Support", to: "/Help", icon: MessageCircle },
+  { label: "Help & Support", to: "/help", icon: MessageCircle },
   { label: "Settings", to: "/settings", icon: Settings },
 ];
 
@@ -115,19 +115,20 @@ export default function Sidebar() {
   const mobileOpen = sidebarContext?.mobileOpen || false;
   const setMobileOpen = sidebarContext?.setMobileOpen || (() => {});
   
-  const { user, logout } = useAuth();
+  // Robust Auth Integration matching AuthContext
+  const { currentUser, logout } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [avatarError, setAvatarError] = useState(false);
   const menuRef = useRef(null);
 
-  // Real-time user info normalization
-  const userName = user?.name || user?.displayName || (user?.email ? user.email.split('@')[0] : "User Account");
-  const userEmail = user?.email || "beautyvibe.member@gmail.com";
+  // Real-time backend & Firebase user info normalization
+  const userName = currentUser?.name || currentUser?.displayName || (currentUser?.email ? currentUser.email.split('@')[0] : "BeautyVibe Member");
+  const userEmail = currentUser?.email || "beautyvibe.member@gmail.com";
   
-  // Resolve avatar URL with fallback priority: Firebase photoURL -> DiceBear notionist generator -> Unsplash fallback
+  // Resolve Google/Firebase profile picture or fallback avatar
   const userAvatar = !avatarError 
-    ? (user?.photoURL || `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(userName)}&backgroundColor=FFF6F0`)
+    ? (currentUser?.avatar || currentUser?.photoURL || `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(userName)}&backgroundColor=FFF6F0`)
     : "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80";
 
   useEffect(() => {
@@ -244,7 +245,7 @@ export default function Sidebar() {
                 onClick={async () => {
                   setShowUserMenu(false);
                   if (isMobile) setMobileOpen(false);
-                  await logout();
+                  if (logout) await logout();
                 }}
                 className="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs font-bold text-red-600 hover:bg-red-50 rounded-2xl transition-colors text-left"
               >

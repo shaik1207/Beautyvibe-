@@ -1,41 +1,10 @@
-import { useState } from "react";
-import { Link } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { 
-  Sparkles, 
-  CheckCircle2, 
-  Tag, 
-  ArrowRight, 
-  Scissors, 
-  ShieldCheck, 
-  Clock, 
-  Plus, 
-  Check, 
-  Gift,
-  Percent
-} from "lucide-react";
+import { Sparkles, Clock, ArrowRight, Scissors, RefreshCw, CheckCircle2 } from "lucide-react";
+import { io } from "socket.io-client";
+import API from "../services/axios";
 
-// ==========================================
-// MOCK AVAILABLE BUNDLE SERVICES
-// ==========================================
-const availableServices = [
-  { id: "p1", name: "Korean Glow Facial", category: "Skincare", price: 899, duration: "75 min", image: "https://images.unsplash.com/photo-1616683693504-3ea7e9ad6fec?w=400&q=80" },
-  { id: "p2", name: "Deep Nourish Hair Spa", category: "Hair Spa", price: 499, duration: "60 min", image: "https://images.unsplash.com/photo-1521590832167-7bcbfaa6381f?w=400&q=80" },
-  { id: "p3", name: "Full Body Polishing", category: "Body Care", price: 1899, duration: "120 min", image: "https://images.unsplash.com/photo-1519823551278-64ac92734fb1?w=400&q=80" },
-  { id: "p4", name: "Classic Mani-Pedi", category: "Nails & Hands", price: 499, duration: "45 min", image: "https://images.unsplash.com/photo-1604654894610-df63bc536371?w=400&q=80" },
-  { id: "p5", name: "Aromatherapy Massage", category: "Spa", price: 1299, duration: "90 min", image: "https://images.unsplash.com/photo-1544161515-4ab6ce6db874?w=400&q=80" },
-  { id: "p6", name: "Painless Rica Waxing", category: "Skincare", price: 699, duration: "45 min", image: "https://images.unsplash.com/photo-1556228578-0d85b1a4d571?w=400&q=80" },
-];
-
-const availableCoupons = [
-  { code: "BEAUTY20", discountPct: 20, label: "20% Off First Booking" },
-  { code: "GLOW50", discountPct: 15, label: "15% Custom Bundle Discount" },
-  { code: "FESTIVE100", flatOff: 200, label: "₹200 Off on Orders above ₹1,500" }
-];
-
-// ==========================================
-// ANIMATION VARIANTS
-// ==========================================
 const staggerContainer = {
   hidden: { opacity: 0 },
   show: { opacity: 1, transition: { staggerChildren: 0.08 } }
@@ -46,240 +15,173 @@ const fadeUp = {
   show: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 70, damping: 20 } }
 };
 
-export default function Packages() {
-  const [selectedIds, setSelectedIds] = useState(["p1", "p2"]); // Pre-select a couple for a nice initial state
-  const [couponCode, setCouponCode] = useState("");
-  const [appliedCoupon, setAppliedCoupon] = useState(null);
+export default function UserPackages() {
+  const navigate = useNavigate();
+  const [packagesList, setPackagesList] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState(null);
 
-  const toggleService = (id) => {
-    if (selectedIds.includes(id)) {
-      setSelectedIds(selectedIds.filter(item => item !== id));
-    } else {
-      setSelectedIds([...selectedIds, id]);
-    }
-  };
-
-  const selectedServicesList = availableServices.filter(s => selectedIds.includes(s.id));
-  
-  const subtotal = selectedServicesList.reduce((acc, curr) => acc + curr.price, 0);
-  
-  // Bundle discount if 3 or more items selected
-  const bundleDiscount = selectedIds.length >= 3 ? Math.round(subtotal * 0.15) : 0;
-  
-  // Coupon discount calculation
-  let couponDiscount = 0;
-  if (appliedCoupon) {
-    if (appliedCoupon.discountPct) {
-      couponDiscount = Math.round((subtotal - bundleDiscount) * (appliedCoupon.discountPct / 100));
-    } else if (appliedCoupon.flatOff && subtotal >= 1500) {
-      couponDiscount = appliedCoupon.flatOff;
-    }
-  }
-
-  const finalTotal = Math.max(0, subtotal - bundleDiscount - couponDiscount);
-
-  const handleApplyCoupon = (coupon) => {
-    if (coupon.flatOff && subtotal < 1500) {
-      setToast(`Minimum order of ₹1,500 required for ${coupon.code}`);
-    } else {
-      setAppliedCoupon(coupon);
-      setToast(`🎉 Coupon ${coupon.code} applied successfully!`);
-    }
+  const showToast = (msg) => {
+    setToast(msg);
     setTimeout(() => setToast(null), 3000);
   };
 
-  return (
-    <div className="flex-1 min-w-0 bg-[#FCF9F6] font-sans selection:bg-[#C56E4E] selection:text-white pb-28 text-[#2D2623] relative">
-      
-      <motion.main 
-        variants={staggerContainer} 
-        initial="hidden" 
-        animate="show" 
-        className="mx-auto max-w-[1440px] px-4 sm:px-6 lg:px-10 pt-6"
-      >
-        
-        {/* ================= HERO BANNER ================= */}
-        <motion.div variants={fadeUp} className="relative overflow-hidden rounded-[2.5rem] bg-[#2D2623] p-8 md:p-14 shadow-xl mb-12 flex items-center min-h-[260px]">
-          <div className="absolute inset-0 z-0 opacity-25">
-            <img src="https://images.unsplash.com/photo-1540555700478-4be289fbecef?auto=format&fit=crop&w=1600&q=80" alt="Spa Background" className="w-full h-full object-cover" />
-            <div className="absolute inset-0 bg-gradient-to-r from-[#2D2623] via-[#2D2623]/80 to-transparent" />
-          </div>
-          <div className="absolute -top-24 -right-24 w-96 h-96 bg-[#C56E4E] rounded-full blur-[140px] opacity-30 pointer-events-none" />
+  const fetchPackages = async () => {
+    try {
+      setLoading(true);
+      const res = await API.get("/api/packages");
+      const raw = res.data?.data || res.data || [];
+      if (Array.isArray(raw)) {
+        setPackagesList(raw);
+      }
+    } catch (err) {
+      console.error("Failed to fetch packages:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-          <div className="relative z-10 max-w-2xl text-white">
-            <div className="inline-flex items-center gap-2 rounded-full bg-white/10 backdrop-blur-md border border-white/20 px-4 py-2 mb-4">
+  useEffect(() => {
+    fetchPackages();
+
+    const socket = io("http://localhost:5000", {
+      transports: ["polling", "websocket"]
+    });
+
+    socket.on("packageAdded", (newPkg) => {
+      setPackagesList(prev => {
+        if (prev.some(p => (p._id && p._id === newPkg._id) || (p.id && p.id === newPkg.id))) return prev;
+        return [newPkg, ...prev];
+      });
+      showToast(`✨ New Luxury Bundle Available: ${newPkg.name}!`);
+    });
+
+    socket.on("packageDeleted", (deletedId) => {
+      setPackagesList(prev => prev.filter(p => p._id !== deletedId && p.id !== deletedId));
+    });
+
+    return () => socket.disconnect();
+  }, []);
+
+  const handleBookBundle = (pkg) => {
+    const bookingDraft = {
+      serviceId: pkg._id || pkg.id,
+      serviceName: pkg.name,
+      category: "Luxury Package",
+      price: pkg.price,
+      duration: pkg.duration,
+      image: pkg.image,
+      type: "SALON",
+      date: new Date().toISOString().split('T')[0],
+      time: "10:00 AM"
+    };
+
+    sessionStorage.setItem("beautyvibe_booking_draft", JSON.stringify(bookingDraft));
+    navigate("/checkout");
+  };
+
+  return (
+    <div className="flex-1 min-w-0 bg-[#FCF9F6] font-sans selection:bg-[#C56E4E] selection:text-white pb-36 text-[#2D2623] relative">
+      <motion.main variants={staggerContainer} initial="hidden" animate="show" className="max-w-[1440px] mx-auto space-y-8 px-4 sm:px-6 lg:px-8 pt-8">
+        
+        {/* Banner */}
+        <motion.div variants={fadeUp} className="bg-[#2D2623] text-white rounded-[2.5rem] p-8 sm:p-12 shadow-xl relative overflow-hidden flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div className="absolute -top-24 -right-24 w-80 h-80 bg-[#C56E4E] rounded-full blur-[120px] opacity-30 pointer-events-none" />
+          <div className="relative z-10">
+            <div className="inline-flex items-center gap-2 rounded-full bg-white/10 backdrop-blur-md border border-white/20 px-4 py-1.5 mb-3 shadow-lg">
               <Sparkles size={14} className="text-[#E5A024]" />
-              <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#F3E8E1]">Custom Bundle Creator</span>
+              <span className="text-[10px] font-bold uppercase tracking-widest text-[#F3E8E1]">Curated Bundles</span>
             </div>
-            <h1 className="font-serif text-3xl sm:text-4xl lg:text-[4rem] font-bold leading-[1.05] mb-3">
-              Tailor Your <span className="text-[#D9A087] italic font-normal">Dream Package</span>
-            </h1>
-            <p className="text-xs sm:text-sm font-medium text-[#D3C5BF] max-w-md">
-              Select your favorite skincare, hair spa, and massage rituals. Unlock automatic bundle discounts and apply exclusive promo codes.
+            <h1 className="font-serif text-3xl sm:text-4xl font-bold mb-2">Luxury Service Packages</h1>
+            <p className="text-xs sm:text-sm text-[#D3C5BF] max-w-lg">
+              Experience multi-treatment transformations combined into exclusive discount packages.
             </p>
           </div>
+          <button onClick={fetchPackages} className="h-10 w-10 rounded-2xl bg-white/10 border border-white/20 flex items-center justify-center text-white hover:bg-white/20 transition-all cursor-pointer shrink-0">
+            <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
+          </button>
         </motion.div>
 
-        {/* ================= MAIN BUILDER GRID ================= */}
-        <div className="grid lg:grid-cols-12 gap-8 items-start">
-          
-          {/* LEFT: Service Selector (8 Cols) */}
-          <motion.div variants={fadeUp} className="lg:col-span-8 space-y-6">
-            <div className="flex items-center justify-between">
-              <h2 className="font-serif text-2xl font-bold text-[#2D2623]">1. Select Your Rituals</h2>
-              <span className="text-xs font-bold text-[#C56E4E] bg-[#FFF6F0] px-3.5 py-1.5 rounded-full border border-[#EADBD2]">
-                {selectedIds.length} Selected
-              </span>
-            </div>
-
-            <div className="grid sm:grid-cols-2 gap-4">
-              {availableServices.map((service) => {
-                const isSelected = selectedIds.includes(service.id);
-
-                return (
-                  <motion.div
-                    whileTap={{ scale: 0.98 }}
-                    key={service.id}
-                    onClick={() => toggleService(service.id)}
-                    className={`group relative flex items-center gap-4 rounded-[2rem] p-4 cursor-pointer transition-all duration-300 border bg-white ${
-                      isSelected 
-                        ? "border-[#C56E4E] shadow-lg ring-2 ring-[#C56E4E]/20 bg-[#FFF6F0]/40" 
-                        : "border-[#EADBD2] hover:border-[#C56E4E]/50 shadow-sm"
-                    }`}
-                  >
-                    <div className="relative h-20 w-20 rounded-2xl overflow-hidden shrink-0 bg-[#FFF6F0]">
-                      <img src={service.image} alt={service.name} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
-                      {isSelected && (
-                        <div className="absolute inset-0 bg-[#C56E4E]/20 backdrop-blur-[2px] flex items-center justify-center text-white">
-                          <Check size={22} strokeWidth={3} />
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="flex-1 min-w-0">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-[#C56E4E] block mb-0.5">{service.category}</span>
-                      <h3 className="font-serif text-base font-bold text-[#2D2623] truncate">{service.name}</h3>
-                      <div className="flex items-center gap-3 mt-2 text-xs font-medium text-[#8C7A70]">
-                        <span className="flex items-center gap-1"><Clock size={12} /> {service.duration}</span>
-                        <strong className="text-[#2D2623] font-serif text-sm">₹{service.price}</strong>
-                      </div>
-                    </div>
-
-                    <div className={`h-7 w-7 rounded-full border flex items-center justify-center transition-colors shrink-0 ${
-                      isSelected ? "bg-[#C56E4E] border-[#C56E4E] text-white" : "border-[#EADBD2] text-transparent"
-                    }`}>
-                      <Check size={14} strokeWidth={3} />
-                    </div>
-                  </motion.div>
-                );
-              })}
-            </div>
-          </motion.div>
-
-          {/* RIGHT: Live Price Summary & Coupons (4 Cols) */}
-          <motion.div variants={fadeUp} className="lg:col-span-4 sticky top-6">
-            <div className="bg-white rounded-[2.5rem] border border-[#EADBD2] p-6 sm:p-8 shadow-xl">
-              <h3 className="font-serif text-2xl font-bold text-[#2D2623] mb-6 flex items-center justify-between">
-                <span>Package Summary</span>
-                <Gift size={22} className="text-[#C56E4E]" />
-              </h3>
-
-              {/* Selected List Summary */}
-              <div className="max-h-56 overflow-y-auto space-y-3 mb-6 pr-1 scrollbar-hide">
-                {selectedServicesList.length > 0 ? (
-                  selectedServicesList.map((item) => (
-                    <div key={item.id} className="flex items-center justify-between text-xs font-bold text-[#5C4841] bg-[#FCF9F6] p-3 rounded-2xl border border-[#EADBD2]/60">
-                      <span className="truncate pr-2">{item.name}</span>
-                      <span className="font-serif text-sm text-[#2D2623] shrink-0">₹{item.price}</span>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-xs text-[#8C7A70] text-center py-6 bg-[#FCF9F6] rounded-2xl border border-dashed border-[#EADBD2]">
-                    No rituals selected yet. Click any service on the left to start building your package!
-                  </p>
-                )}
-              </div>
-
-              {/* Promo Code Section */}
-              <div className="mb-6">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-[#8C7A70] mb-2.5">Available Offers & Coupons</p>
-                <div className="space-y-2">
-                  {availableCoupons.map((coupon) => (
-                    <div 
-                      key={coupon.code}
-                      onClick={() => handleApplyCoupon(coupon)}
-                      className={`flex items-center justify-between p-3 rounded-2xl border cursor-pointer transition-all ${
-                        appliedCoupon?.code === coupon.code 
-                          ? "bg-[#FFF6F0] border-[#C56E4E] text-[#C56E4E]" 
-                          : "bg-[#FCF9F6] border-[#EADBD2] text-[#5C4841] hover:border-[#C56E4E]/50"
-                      }`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <Tag size={14} className="shrink-0" />
-                        <div>
-                          <p className="text-xs font-bold">{coupon.code}</p>
-                          <p className="text-[10px] text-[#8C7A70]">{coupon.label}</p>
-                        </div>
-                      </div>
-                      <span className="text-[11px] font-bold uppercase tracking-wider underline">
-                        {appliedCoupon?.code === coupon.code ? "Applied" : "Apply"}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Price Calculation Breakdown */}
-              <div className="space-y-2.5 text-xs font-medium text-[#8C7A70] border-t border-[#EADBD2] pt-5 mb-6">
-                <div className="flex justify-between"><span>Subtotal ({selectedIds.length} items):</span> <strong className="font-serif text-sm text-[#2D2623]">₹{subtotal}</strong></div>
-                
-                {bundleDiscount > 0 && (
-                  <div className="flex justify-between text-[#1E9E4A]">
-                    <span>Bundle Discount (15% Off):</span> 
-                    <strong>-₹{bundleDiscount}</strong>
-                  </div>
-                )}
-
-                {couponDiscount > 0 && (
-                  <div className="flex justify-between text-[#1E9E4A]">
-                    <span>Coupon ({appliedCoupon?.code}):</span> 
-                    <strong>-₹{couponDiscount}</strong>
-                  </div>
-                )}
-
-                <div className="flex justify-between items-center text-sm font-bold text-[#2D2623] pt-3 border-t border-[#EADBD2]/60">
-                  <span>Total Amount:</span>
-                  <span className="font-serif text-2xl font-bold text-[#C56E4E]">₹{finalTotal}</span>
-                </div>
-              </div>
-
-              {/* Checkout CTA */}
-              <Link
-                to={selectedIds.length > 0 ? `/checkout?package=${selectedIds.join(",")}&total=${finalTotal}` : "#"}
-                onClick={(e) => {
-                  if (selectedIds.length === 0) {
-                    e.preventDefault();
-                    alert("Please select at least one service to book your package.");
-                  }
-                }}
-                className={`w-full py-4 rounded-full text-xs font-bold uppercase tracking-wider shadow-lg flex items-center justify-center gap-2 transition-all ${
-                  selectedIds.length > 0 
-                    ? "bg-[#C56E4E] text-white hover:bg-[#A35539] hover:-translate-y-0.5" 
-                    : "bg-[#EADBD2] text-[#8C7A70] cursor-not-allowed"
-                }`}
+        {/* Packages Grid */}
+        {loading && packagesList.length === 0 ? (
+          <div className="py-24 text-center bg-white rounded-[2.5rem] border border-[#EADBD2]">
+            <RefreshCw size={28} className="animate-spin mx-auto mb-3 text-[#C56E4E]" />
+            <p className="text-xs font-bold uppercase tracking-wider text-[#8C7A70]">Loading luxury packages...</p>
+          </div>
+        ) : packagesList.length > 0 ? (
+          <motion.div variants={fadeUp} className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {packagesList.map((pkg, idx) => (
+              <motion.div
+                layout
+                key={pkg._id || pkg.id || `user-pkg-${idx}`}
+                className="bg-white rounded-[2.5rem] border border-[#EADBD2] overflow-hidden shadow-sm hover:shadow-xl hover:border-[#C56E4E]/40 transition-all duration-300 flex flex-col justify-between relative group"
               >
-                Proceed to Checkout <ArrowRight size={16} />
-              </Link>
+                <div className="absolute top-4 right-4 z-10">
+                  <span className="bg-[#C56E4E] text-white px-3.5 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wider shadow-md">
+                    {pkg.badge || "Special Bundle"}
+                  </span>
+                </div>
 
-            </div>
+                <div>
+                  <div className="relative h-52 w-full overflow-hidden bg-[#FFF6F0]">
+                    <img src={pkg.image} alt={pkg.name} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+                    <div className="absolute bottom-4 left-6 text-white">
+                      <span className="text-[10px] font-mono tracking-widest opacity-80">REF: {String(pkg._id || pkg.id || idx).slice(-6).toUpperCase()}</span>
+                      <h3 className="font-serif text-2xl font-bold">{pkg.name}</h3>
+                    </div>
+                  </div>
+
+                  <div className="p-6 sm:p-8 space-y-4">
+                    <p className="text-xs font-medium text-[#8C7A70]">{pkg.tagline}</p>
+                    <div>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-[#C56E4E] block mb-2">
+                        Included Rituals ({pkg.services?.length || 0} Treatments):
+                      </span>
+                      <div className="flex flex-wrap gap-2">
+                        {pkg.services?.map((srvName, sIdx) => (
+                          <span key={sIdx} className="inline-flex items-center gap-1 bg-[#FFF6F0] border border-[#EADBD2] px-3 py-1.5 rounded-xl text-xs font-bold text-[#2D2623]">
+                            <Scissors size={12} className="text-[#C56E4E]" /> {srvName}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-4 text-xs font-bold text-[#8C7A70] pt-2">
+                      <span className="flex items-center gap-1"><Clock size={14} className="text-[#C56E4E]" /> {pkg.duration}</span>
+                      <span>•</span>
+                      <span className="text-[#1E9E4A]">Exclusive Savings Active</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-6 sm:pt-0 sm:px-8 sm:pb-8 flex items-center justify-between border-t border-[#EADBD2]/60 pt-4 mt-auto">
+                  <div className="flex items-baseline gap-2">
+                    <strong className="font-serif text-3xl font-bold text-[#2D2623]">₹{pkg.price}</strong>
+                    {pkg.originalPrice && <span className="text-xs text-[#8C7A70] line-through">₹{pkg.originalPrice}</span>}
+                  </div>
+
+                  <button
+                    onClick={() => handleBookBundle(pkg)}
+                    className="flex items-center gap-2 rounded-full bg-[#C56E4E] px-6 py-3 text-xs font-bold uppercase tracking-wider text-white shadow-md hover:bg-[#A35539] transition-all cursor-pointer"
+                  >
+                    Book Bundle <ArrowRight size={14} />
+                  </button>
+                </div>
+              </motion.div>
+            ))}
           </motion.div>
-
-        </div>
+        ) : (
+          <div className="py-24 text-center bg-white rounded-[2.5rem] border border-[#EADBD2] p-8">
+            <Sparkles size={32} className="mx-auto text-[#C56E4E] mb-3 opacity-60" />
+            <h3 className="font-serif text-xl font-bold text-[#2D2623] mb-1">No Packages Available</h3>
+            <p className="text-xs text-[#8C7A70]">Newly published packages from the admin panel will appear here instantly in real time.</p>
+          </div>
+        )}
 
       </motion.main>
 
-      {/* ================= TOAST NOTIFICATION ================= */}
+      {/* Toast Notification */}
       <AnimatePresence>
         {toast && (
           <motion.div
