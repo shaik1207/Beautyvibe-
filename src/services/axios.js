@@ -1,17 +1,18 @@
 import axios from 'axios';
 
-// Safely determine the base URL for local vs. production server
+// Safely extract the raw URL, stripping accidental Markdown formatting
 const getBaseUrl = () => {
-  if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_BASE_URL) {
-    return import.meta.env.VITE_API_BASE_URL;
+  let rawUrl = import.meta.env.VITE_API_BASE_URL;
+  if (typeof rawUrl === 'string') {
+    // Finds the first actual http/https link and ignores surrounding text/brackets
+    const match = rawUrl.match(/(https?:\/\/[^\s)\]'"]+)/);
+    if (match) return match[0];
   }
-  // Hard fallback for local development
   return 'http://localhost:5000';
 };
 
 const API = axios.create({
   baseURL: getBaseUrl(),
-  // CRITICAL: withCredentials is removed to prevent CORS blocks when using Bearer tokens
 });
 
 // Intercept every request to inject the correct bearer token
@@ -27,12 +28,10 @@ API.interceptors.request.use(
     }
     return config;
   }, 
-  (error) => {
-    return Promise.reject(error);
-  }
+  (error) => Promise.reject(error)
 );
 
-// Response interceptor to gracefully log 401s without crashing components
+// Response interceptor to gracefully log 401s
 API.interceptors.response.use(
   (response) => response,
   (error) => {
