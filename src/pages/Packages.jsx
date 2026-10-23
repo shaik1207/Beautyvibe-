@@ -44,11 +44,20 @@ export default function UserPackages() {
   useEffect(() => {
     fetchPackages();
 
-    // Dynamically resolve socket URL for local dev & production deployment
-    const socketUrl = import.meta.env.VITE_SOCKET_URL || import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
+    // Dynamically resolve socket URL safely for local and production deployment
+    const socketBase = import.meta.env.VITE_SOCKET_URL || import.meta.env.VITE_API_BASE_URL;
+    let socketUrl = "http://localhost:5000";
+    if (typeof socketBase === "string" && socketBase.trim().length > 0) {
+      const match = socketBase.match(/(https?:\/\/[^\s)\]'"]+)/);
+      if (match) socketUrl = match[1].replace(/\/$/, "");
+    } else if (window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") {
+      socketUrl = window.location.origin;
+    }
+
     const socket = io(socketUrl, {
       transports: ["polling", "websocket"],
-      reconnection: true
+      reconnection: true,
+      secure: socketUrl.startsWith("https")
     });
 
     socket.on("packageAdded", (newPkg) => {
@@ -74,7 +83,7 @@ export default function UserPackages() {
       price: pkg.price,
       duration: pkg.duration,
       image: pkg.image,
-      type: "SALON",
+      type: "HOME",
       date: new Date().toISOString().split('T')[0],
       time: "10:00 AM"
     };
@@ -97,7 +106,7 @@ export default function UserPackages() {
             </div>
             <h1 className="font-serif text-3xl sm:text-4xl font-bold mb-2">Luxury Service Packages</h1>
             <p className="text-xs sm:text-sm text-[#D3C5BF] max-w-lg">
-              Experience multi-treatment transformations combined into exclusive discount packages.
+              Experience multi-treatment transformations combined into exclusive discount packages delivered directly to your doorstep.
             </p>
           </div>
           <button onClick={fetchPackages} className="h-10 w-10 rounded-2xl bg-white/10 border border-white/20 flex items-center justify-center text-white hover:bg-white/20 transition-all cursor-pointer shrink-0">

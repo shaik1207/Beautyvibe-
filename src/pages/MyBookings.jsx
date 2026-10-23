@@ -131,7 +131,6 @@ export default function MyBookings() {
        
       const normalized = list.map(item => ({
         ...item,
-        // Robust normalization supporting both MongoDB _id and SQL id fields
         uid: item._id || item.id,
         serviceName: item.serviceName || item.service?.name || "Premium Beauty Ritual",
         image: item.image || item.serviceImage || item.service?.image || "https://images.unsplash.com/photo-1522337660859-02fbefca4702?auto=format&fit=crop&w=400&q=80"
@@ -156,8 +155,21 @@ export default function MyBookings() {
     fetchAppointments();
     fetchStaffMembers();
 
-    const socketUrl = import.meta.env.VITE_SOCKET_URL || "http://localhost:5000";
-    const socket = io(socketUrl, { transports: ["polling", "websocket"], reconnection: true });
+    // Dynamically resolve socket URL safely
+    const socketBase = import.meta.env.VITE_SOCKET_URL || import.meta.env.VITE_API_BASE_URL;
+    let socketUrl = "http://localhost:5000";
+    if (typeof socketBase === "string" && socketBase.trim().length > 0) {
+      const match = socketBase.match(/(https?:\/\/[^\s)\]'"]+)/);
+      if (match) socketUrl = match[1].replace(/\/$/, "");
+    } else if (window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") {
+      socketUrl = window.location.origin;
+    }
+
+    const socket = io(socketUrl, {
+      transports: ["polling", "websocket"],
+      reconnection: true,
+      secure: socketUrl.startsWith("https")
+    });
 
     socket.on("connect", () => setSocketConnected(true));
     socket.on("disconnect", () => setSocketConnected(false));

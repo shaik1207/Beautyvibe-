@@ -1,18 +1,19 @@
 import axios from 'axios';
 
-// Safely extract the raw URL, stripping accidental Markdown formatting
+// Safely extract the raw URL, stripping accidental Markdown formatting or quotes
 const getBaseUrl = () => {
   let rawUrl = import.meta.env.VITE_API_BASE_URL;
   if (typeof rawUrl === 'string') {
     // Finds the first actual http/https link and ignores surrounding text/brackets
     const match = rawUrl.match(/(https?:\/\/[^\s)\]'"]+)/);
-    if (match) return match[0];
+    if (match) return match[1];
   }
   return 'http://localhost:5000';
 };
 
 const API = axios.create({
   baseURL: getBaseUrl(),
+  timeout: 15000, // Added 15s timeout to prevent hanging during cold starts
 });
 
 // Intercept every request to inject the correct bearer token

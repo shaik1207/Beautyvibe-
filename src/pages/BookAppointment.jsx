@@ -4,7 +4,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import { 
   CalendarDays, 
   Clock, 
-  House, 
   Sparkles, 
   CreditCard, 
   Smartphone, 
@@ -111,9 +110,20 @@ export default function BookAppointment() {
 
     fetchData();
 
-    // Socket.io Connection for Real-Time Slot Updates
-    const socket = io("http://localhost:5000", {
-      transports: ["websocket", "polling"]
+    // Socket.io Connection for Real-Time Slot Updates with robust fallback URL
+    const socketBase = import.meta.env.VITE_SOCKET_URL || import.meta.env.VITE_API_BASE_URL;
+    let socketUrl = "http://localhost:5000";
+    if (typeof socketBase === "string" && socketBase.trim().length > 0) {
+      const match = socketBase.match(/(https?:\/\/[^\s)\]'"]+)/);
+      if (match) socketUrl = match[1].replace(/\/$/, "");
+    } else if (window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") {
+      socketUrl = window.location.origin;
+    }
+
+    const socket = io(socketUrl, {
+      transports: ["websocket", "polling"],
+      reconnection: true,
+      secure: socketUrl.startsWith("https")
     });
 
     socket.on("connect", () => setSocketConnected(true));
@@ -144,7 +154,6 @@ export default function BookAppointment() {
       async (position) => {
         const { latitude, longitude } = position.coords;
         try {
-          // Use OpenStreetMap Nominatim reverse geocoding API for exact human-readable address
           const res = await axios.get(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
           if (res.data && res.data.display_name) {
             setAddress(res.data.display_name);
