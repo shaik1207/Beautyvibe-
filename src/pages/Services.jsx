@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Star, Clock, Heart, ArrowRight, Sparkles, Search, CheckCircle2, Info } from "lucide-react";
-import API from "../utils/axios";
+import API from "../services/axios";
 
 const categories = ["All", "Hair", "Skin", "Nails", "Grooming", "Beauty"];
 
