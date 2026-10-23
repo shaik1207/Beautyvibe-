@@ -1,95 +1,8 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Star, Clock, Heart, ArrowRight, Sparkles, Search, CheckCircle2, Info } from "lucide-react";
-import axios from "axios";
-
-// ==========================================
-// AXIOS CLIENT HELPER
-// ==========================================
-const API = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || "http://localhost:5000",
-});
-
-API.interceptors.request.use((config) => {
-  const token = localStorage.getItem("beautyvibe_user_token") || localStorage.getItem("beautyvibe_admin_token") || localStorage.getItem("token");
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
-
-// ==========================================
-// FALLBACK STATIC CATALOG (Ensures page never breaks)
-// ==========================================
-const fallbackServices = [
-  {
-    id: "haircut",
-    name: "Signature Hair Styling",
-    category: "Hair",
-    price: 299,
-    duration: "45 mins",
-    image: "https://images.unsplash.com/photo-1562322140-8baeececf3df?auto=format&fit=crop&w=800&q=80",
-    description: "Refresh your look with a precision style tailored specifically to your facial features and preferences.",
-    rating: "4.9",
-    reviews: "1.2K"
-  },
-  {
-    id: "hairspa",
-    name: "Deep Nourish Hair Spa",
-    category: "Hair",
-    price: 499,
-    duration: "60 mins",
-    image: "https://images.unsplash.com/photo-1521590832167-7bcbfaa6381f?auto=format&fit=crop&w=800&q=80",
-    description: "Enjoy a deeply relaxing hair-care treatment focused on scalp nourishment, softness, and vibrant shine.",
-    rating: "4.8",
-    reviews: "850"
-  },
-  {
-    id: "facial",
-    name: "24K Gold Glow Facial",
-    category: "Skin",
-    price: 899,
-    duration: "75 mins",
-    image: "https://images.unsplash.com/photo-1570172619644-dfd03ed5d881?auto=format&fit=crop&w=800&q=80",
-    description: "A refreshing multi-step facial selected to deeply hydrate, brighten, and give your skin a luminous complexion.",
-    rating: "5.0",
-    reviews: "2.1K"
-  },
-  {
-    id: "manicure",
-    name: "Classic Mani-Pedi",
-    category: "Nails",
-    price: 499,
-    duration: "45 mins",
-    image: "https://images.unsplash.com/photo-1604654894610-df63bc536371?auto=format&fit=crop&w=800&q=80",
-    description: "Give your hands and feet complete cuticle care, precise nail shaping, and a neat, refreshed finish.",
-    rating: "4.7",
-    reviews: "920"
-  },
-  {
-    id: "beard",
-    name: "Gentleman's Grooming",
-    category: "Grooming",
-    price: 299,
-    duration: "30 mins",
-    image: "https://images.unsplash.com/photo-1621605815971-fbc98d665033?auto=format&fit=crop&w=800&q=80",
-    description: "Professional beard shaping, trimming, and hot towel treatment for a clean, well-groomed appearance.",
-    rating: "4.8",
-    reviews: "640"
-  },
-  {
-    id: "makeup",
-    name: "Bridal Elegance Makeup",
-    category: "Beauty",
-    price: 4999,
-    duration: "120 mins",
-    image: "https://images.unsplash.com/photo-1487412720507-e7ab37603c6f?auto=format&fit=crop&w=800&q=80",
-    description: "A personalized, flawless, long-lasting makeup session crafted specifically for your most special occasions.",
-    rating: "4.9",
-    reviews: "3.4K"
-  }
-];
+import API from "../utils/axios";
 
 const categories = ["All", "Hair", "Skin", "Nails", "Grooming", "Beauty"];
 
@@ -97,14 +10,15 @@ export default function Services() {
   const [searchParams] = useSearchParams();
   const initialCategory = searchParams.get("category") || "All";
 
-  const [services, setServices] = useState(fallbackServices);
+  const [services, setServices] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState(initialCategory);
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState(null);
   const [toastMsg, setToastMsg] = useState(null);
   const [favorites, setFavorites] = useState([]);
 
-  // Load existing favorites from localStorage on component mount
+  // Load existing favorites from localStorage
   useEffect(() => {
     const savedFavs = localStorage.getItem("beautyvibe_user_favorites");
     if (savedFavs) {
@@ -116,18 +30,23 @@ export default function Services() {
     }
   }, []);
 
+  // Fetch live services from backend database
   useEffect(() => {
     const fetchServices = async () => {
       try {
         setLoading(true);
+        setErrorMsg(null);
         const res = await API.get("/api/services");
         
-        if (res.data?.success && Array.isArray(res.data.data) && res.data.data.length > 0) {
-          setServices(res.data.data);
+        const responseData = res.data?.data || res.data || [];
+        if (Array.isArray(responseData)) {
+          setServices(responseData);
+        } else {
+          setServices([]);
         }
       } catch (err) {
-        console.warn("Failed to fetch live services, using offline fallback catalog.");
-        // Keeps fallbackServices intact
+        console.error("Failed to fetch live services:", err);
+        setErrorMsg("Unable to load services from the server. Please check your backend connection.");
       } finally {
         setLoading(false);
       }
@@ -149,7 +68,6 @@ export default function Services() {
     let updatedFavs;
     let isAdding = true;
 
-    // Toggle logic: remove if exists, add if missing
     if (favorites.includes(sId)) {
       updatedFavs = favorites.filter(id => id !== sId);
       isAdding = false;
@@ -157,17 +75,13 @@ export default function Services() {
       updatedFavs = [...favorites, sId];
     }
 
-    // Update state and localStorage
     setFavorites(updatedFavs);
     localStorage.setItem("beautyvibe_user_favorites", JSON.stringify(updatedFavs));
-    
-    // Dispatch event to sync with other tabs or components
     window.dispatchEvent(new Event("storage"));
 
     setToastMsg(isAdding ? `✨ Pinned "${service.title || service.name}" to Favourites!` : `💔 Removed from Favourites`);
     setTimeout(() => setToastMsg(null), 3000);
 
-    // Silently attempt backend sync if supported
     try {
       await API.post("/api/users/favourites", { serviceId: sId }).catch(() => {});
     } catch (e) {}
@@ -192,7 +106,7 @@ export default function Services() {
               Professional Salon & Spa Rituals
             </h1>
             <p className="text-xs sm:text-sm text-[#EADBD2]/80 leading-relaxed">
-              Discover our comprehensive menu of doorstep beauty services delivered by certified experts using premium organic products.
+              Discover our comprehensive menu of salon services delivered by certified experts using premium organic products.
             </p>
           </div>
         </div>
@@ -239,6 +153,17 @@ export default function Services() {
               </div>
             ))}
           </div>
+        ) : errorMsg ? (
+          <div className="flex flex-col items-center justify-center rounded-[2rem] border border-red-200 bg-white p-12 text-center shadow-sm">
+            <h3 className="font-serif text-xl font-bold mb-2 text-red-600">Connection Error</h3>
+            <p className="text-xs text-[#8C7A70] mb-6">{errorMsg}</p>
+            <button
+              onClick={() => window.location.reload()}
+              className="rounded-full bg-[#C56E4E] px-6 py-3 text-xs font-bold uppercase tracking-wider text-white shadow-md hover:bg-[#A35539]"
+            >
+              Retry Connection
+            </button>
+          </div>
         ) : filteredServices.length === 0 ? (
           <div className="flex flex-col items-center justify-center rounded-[2rem] border border-[#EADBD2] bg-white p-12 text-center shadow-sm">
             <h3 className="font-serif text-2xl font-bold mb-2">No Services Found</h3>
@@ -254,9 +179,11 @@ export default function Services() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             <AnimatePresence mode="popLayout">
               {filteredServices.map((service) => {
-                const sId = String(service._id || service.id);
+                const sId = String(service.id || service._id);
                 const sName = service.title || service.name;
-                const sImg = service.image?.startsWith("http") ? service.image : `https://images.unsplash.com/photo-${service.image}?auto=format&fit=crop&w=800&q=80`;
+                const sImg = service.image?.startsWith("http") 
+                  ? service.image 
+                  : "https://images.unsplash.com/photo-1522337660859-02fbefca4702?w=800&q=80";
                 const isFavorited = favorites.includes(sId);
 
                 return (
@@ -288,12 +215,12 @@ export default function Services() {
                         <div className="flex items-center justify-between mb-2">
                           <span className="text-[10px] font-bold uppercase tracking-widest text-[#C56E4E]">{service.category || "Ritual"}</span>
                           <span className="flex items-center gap-1 text-xs font-bold text-[#E5A024]">
-                            <Star size={12} className="fill-current" /> {service.rating || "4.8"}
+                            <Star size={12} className="fill-current" /> {service.rating || "5.0"}
                           </span>
                         </div>
 
                         <h3 className="font-serif text-xl font-bold text-[#2D2623] leading-tight mb-2">{sName}</h3>
-                        <p className="text-xs font-medium text-[#8C7A70] line-clamp-2 mb-4 leading-relaxed">{service.description || service.desc}</p>
+                        <p className="text-xs font-medium text-[#8C7A70] line-clamp-2 mb-4 leading-relaxed">{service.description}</p>
 
                         <div className="flex items-center justify-between pt-3 border-t border-[#EADBD2]/60 mb-5">
                           <span className="font-serif text-2xl font-bold text-[#2D2623]">₹{Number(service.price).toLocaleString("en-IN")}</span>
