@@ -20,22 +20,7 @@ import {
   Navigation
 } from "lucide-react";
 import { io } from "socket.io-client";
-import axios from "axios";
-
-// ==========================================
-// AXIOS CLIENT HELPER
-// ==========================================
-const API = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || "http://localhost:5000",
-});
-
-API.interceptors.request.use((config) => {
-  const token = localStorage.getItem("beautyvibe_user_token") || localStorage.getItem("beautyvibe_admin_token");
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
+import API from "../services/axios";
 
 const availableTimeSlots = [
   "09:00 AM", "10:00 AM", "11:00 AM", "12:00 PM", 
@@ -72,7 +57,7 @@ export default function BookAppointment() {
   const [submitting, setSubmitting] = useState(false);
   const [hoveredSlot, setHoveredSlot] = useState(null);
 
-  // Fetch services and booked slots for the chosen date
+  // Fetch services and booked slots on mount
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -94,7 +79,7 @@ export default function BookAppointment() {
           }));
           setAllServices(formatted);
            
-          // Robust ID match (supporting stringified or numeric ID parameters)
+          // Match selected service or fallback cleanly to the first available service
           const target = formatted.find(s => s.id === String(initialServiceId)) || formatted[0];
           if (target) {
             setSelectedServiceIds([target.id]);
@@ -178,17 +163,22 @@ export default function BookAppointment() {
     );
   };
 
-  const primarySelectedId = selectedServiceIds[0];
-  const primaryService = allServices.find((s) => s.id === String(primarySelectedId)) || allServices[0] || { id: "", name: "Select Ritual", price: 0, duration: "45 min", image: "" };
+  // Safe Fallback Resolution
+  const primarySelectedId = selectedServiceIds[0] || (allServices[0] ? allServices[0].id : "");
+  const primaryService = allServices.find((s) => s.id === String(primarySelectedId)) || allServices[0] || { id: "", name: "Select Ritual", price: 0, duration: "45 min", image: "https://images.unsplash.com/photo-1562322140-8baeececf3df?w=200&q=80" };
+  
   const additionalSelectedIds = selectedServiceIds.slice(1);
   const additionalSelectedServices = allServices.filter((s) => additionalSelectedIds.includes(s.id));
-  const recommendedServices = allServices.filter((s) => !selectedServiceIds.includes(s.id));
+  const recommendedServices = allServices.filter((s) => s.id !== primaryService.id && !additionalSelectedIds.includes(s.id));
 
-  // Robust calculation with numeric enforcement
-  const totalCalculatedPrice = selectedServiceIds.reduce((sum, id) => {
-    const s = allServices.find(item => item.id === String(id));
-    return sum + (s ? Number(s.price) || 0 : 0);
-  }, 0);
+  // Guaranteed Numeric Total Price Calculation
+  const totalCalculatedPrice = (() => {
+    let sum = Number(primaryService.price) || 0;
+    additionalSelectedServices.forEach(add => {
+      sum += Number(add.price) || 0;
+    });
+    return sum;
+  })();
 
   const toggleRecommendedService = (id) => {
     const stringId = String(id);
@@ -201,7 +191,7 @@ export default function BookAppointment() {
     }
   };
 
-  const handleCreateAppointment = async (e) => {
+  const handleProceedToCheckout = (e) => {
     e.preventDefault();
     if (!date || !time) {
       setError("Please select your preferred date and time slot.");
@@ -220,59 +210,24 @@ export default function BookAppointment() {
       return;
     }
 
-    try {
-      setSubmitting(true);
-      setError("");
+    setError("");
 
-      const payload = {
-        serviceId: primaryService.id,
-        serviceName: primaryService.name,
-        additionalServices: additionalSelectedServices.map(s => s.name),
-        amount: totalCalculatedPrice,
-        datetime: `${date}T${time}`,
-        type: "HOME",
-        address,
-        paymentMethod
-      };
+    // Package booking draft for seamless transition to checkout
+    const bookingDraft = {
+      serviceId: primaryService.id,
+      serviceName: primaryService.name,
+      additionalServices: additionalSelectedServices.map(s => s.name),
+      price: totalCalculatedPrice,
+      date,
+      time,
+      type: "HOME",
+      address,
+      paymentMethod,
+      image: primaryService.image
+    };
 
-      const res = await API.post("/api/appointments", payload);
-
-      if (res.data?.success || res.status === 201 || res.status === 200) {
-        const appointmentData = res.data?.data || res.data || {};
-        sessionStorage.setItem("beautyvibe_booking_draft", JSON.stringify({
-          ...appointmentData,
-          serviceId: primaryService.id,
-          serviceName: primaryService.name,
-          price: totalCalculatedPrice,
-          date,
-          time,
-          type: "HOME",
-          address,
-          paymentMethod,
-          image: primaryService.image
-        }));
-        navigate("/checkout");
-        return;
-      }
-    } catch (err) {
-      console.error("Booking error:", err);
-      // Fallback draft storage so user can still proceed to checkout safely
-      sessionStorage.setItem("beautyvibe_booking_draft", JSON.stringify({
-        serviceId: primaryService.id,
-        serviceName: primaryService.name, 
-        additionalServices: additionalSelectedServices.map(s => s.name),
-        price: totalCalculatedPrice, 
-        date, 
-        time, 
-        type: "HOME",
-        address,
-        paymentMethod,
-        image: primaryService.image
-      }));
-      navigate("/checkout");
-    } finally {
-      setSubmitting(false);
-    }
+    sessionStorage.setItem("beautyvibe_booking_draft", JSON.stringify(bookingDraft));
+    navigate("/checkout");
   };
 
   if (loading) {
@@ -311,7 +266,7 @@ export default function BookAppointment() {
           </div>
         </motion.div>
 
-        <form onSubmit={handleCreateAppointment} className="grid lg:grid-cols-12 gap-8 items-start">
+        <form onSubmit={handleProceedToCheckout} className="grid lg:grid-cols-12 gap-8 items-start">
           
           {/* Left Form Panel (7 Cols) */}
           <motion.div variants={fadeUp} className="lg:col-span-7 space-y-8 bg-white rounded-[2.5rem] border border-[#EADBD2] p-6 sm:p-8 shadow-sm">
