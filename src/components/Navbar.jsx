@@ -15,13 +15,17 @@ import {
   PartyPopper,
   CheckCircle2,
   Calendar,
-  Clock
+  Clock,
+  Home
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useSidebar } from "../context/SidebarContext";
+import API from "../services/axios";
+import { io } from "socket.io-client";
 
 const INTRO_DURATION = 2600;
 const INTRO_SESSION_KEY = "luminaeIntroShown";
+const NOTIFICATIONS_STORAGE_KEY = "beautyvibe_user_notifications";
 const easeOut = [0.22, 1, 0.36, 1];
 
 const SafeImage = ({ src, alt, className, ...props }) => {
@@ -51,7 +55,6 @@ export default function Navbar() {
   const sidebarContext = useSidebar();
   const setMobileOpen = sidebarContext?.setMobileOpen || (() => {});
   
-  // Robust Auth Context Sync (matches currentUser from AuthContext)
   const { currentUser } = useAuth();
   
   const navigate = useNavigate();
@@ -59,22 +62,125 @@ export default function Navbar() {
   const isHomepage = location.pathname === "/";
 
   const [showNotifications, setShowNotifications] = useState(false);
-  const [notifications, setNotifications] = useState([
-    {
-      id: 1,
-      title: "Upcoming Appointment",
-      description: "Korean Glow Facial booked for tomorrow at 11:00 AM.",
-      time: "2h ago",
-      read: false
-    },
-    {
-      id: 2,
-      title: "Welcome to BeautyVibe!",
-      description: "Explore our signature spa packages and exclusive offers.",
-      time: "1d ago",
-      read: true
+  
+  // Initialize notifications from localStorage. If the key exists, respect its value (even if empty array). 
+  // Only use default empty array if localStorage is completely uninitialized, completely omitting demo messages.
+  const [notifications, setNotifications] = useState(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const saved = localStorage.getItem(NOTIFICATIONS_STORAGE_KEY);
+      if (saved !== null) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {
+      console.error("Failed to load saved notifications", e);
     }
-  ]);
+    return [];
+  });
+
+  // Save notifications to localStorage whenever they change
+  useEffect(() => {
+    try {
+      localStorage.setItem(NOTIFICATIONS_STORAGE_KEY, JSON.stringify(notifications));
+    } catch (e) {
+      console.error("Failed to save notifications", e);
+    }
+  }, [notifications]);
+
+  // Fetch real-time appointments and synchronize order confirmations & expert assignments
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const fetchUserBookings = async () => {
+      try {
+        const response = await API.get("/api/appointments");
+        const list = response.data?.data || response.data || [];
+        if (Array.isArray(list)) {
+          setNotifications(prev => {
+            const existingIds = new Set(prev.map(n => n.id));
+            const newNotes = [...prev];
+            let hasChanges = false;
+
+            list.forEach((app, idx) => {
+              const serviceName = app.serviceName || app.service?.name || "Beauty Ritual";
+              const status = app.status || "Pending";
+              const hasStaff = app.staff || app.assignedStaff;
+              const appId = app._id || app.id || idx;
+
+              const confId = `conf-${appId}`;
+              if (!existingIds.has(confId)) {
+                newNotes.unshift({
+                  id: confId,
+                  title: "Booking Confirmed! 🎉",
+                  description: `Your appointment for ${serviceName} has been successfully recorded.`,
+                  time: "Just now",
+                  read: false
+                });
+                hasChanges = true;
+                existingIds.add(confId);
+              }
+
+              if (hasStaff) {
+                const staffId = `staff-${appId}`;
+                if (!existingIds.has(staffId)) {
+                  newNotes.unshift({
+                    id: staffId,
+                    title: "Expert Assigned 🌟",
+                    description: `${hasStaff} is assigned to your ${serviceName} booking.`,
+                    time: "Just now",
+                    read: false
+                  });
+                  hasChanges = true;
+                  existingIds.add(staffId);
+                }
+              }
+            });
+
+            return hasChanges ? newNotes : prev;
+          });
+        }
+      } catch (err) {
+        console.error("Failed to fetch appointment notifications:", err);
+      }
+    };
+
+    fetchUserBookings();
+
+    // Socket.io Listener for Real-Time Booking Updates
+    const socketBase = import.meta.env.VITE_SOCKET_URL || import.meta.env.VITE_API_BASE_URL;
+    let socketUrl = "http://localhost:5000";
+    if (typeof socketBase === "string" && socketBase.trim().length > 0) {
+      const match = socketBase.match(/(https?:\/\/[^\s)\]'"]+)/);
+      if (match) socketUrl = match[1].replace(/\/$/, "");
+    } else if (window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") {
+      socketUrl = window.location.origin;
+    }
+
+    const socket = io(socketUrl, {
+      transports: ["polling", "websocket"],
+      reconnection: true,
+      secure: socketUrl.startsWith("https")
+    });
+
+    socket.on("appointmentUpdated", (updatedApp) => {
+      const sName = updatedApp.serviceName || "Beauty Ritual";
+      const hasExpert = updatedApp.staff || updatedApp.assignedStaff;
+
+      setNotifications(prev => [
+        {
+          id: `socket-${Date.now()}`,
+          title: hasExpert ? "Expert Assigned! 🌟" : "Order Status Updated 🔄",
+          description: hasExpert ? `${hasExpert} is now assigned to your ${sName} booking.` : `Your booking for ${sName} has been updated.`,
+          time: "Just now",
+          read: false
+        },
+        ...prev
+      ]);
+    });
+
+    return () => socket.disconnect();
+  }, [currentUser]);
 
   // Real-time Location States
   const [currentLocation, setCurrentLocation] = useState("ICMR Campus, Hyderabad");
@@ -93,13 +199,11 @@ export default function Navbar() {
     return !sessionStorage.getItem(INTRO_SESSION_KEY);
   });
 
-  // Determine if the user is brand new vs returning based on creation metadata
   const isNewUser = (() => {
     if (!currentUser?.createdAt && !currentUser?.metadata?.creationTime) return false;
     const createdTime = currentUser.createdAt || currentUser.metadata?.creationTime;
     const created = new Date(createdTime).getTime();
     const now = new Date().getTime();
-    // If created within the last 5 minutes, consider them a new user
     return Math.abs(now - created) < 300000;
   })();
 
@@ -107,7 +211,6 @@ export default function Navbar() {
     ? `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(currentUser.name || currentUser.email)}&backgroundColor=FFF6F0`
     : null);
 
-  // Automatically detect location on initial mount
   useEffect(() => {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
@@ -119,9 +222,7 @@ export default function Navbar() {
             const detectedCity = data.city || data.locality || data.principalSubdivision || "Current Location";
             const detectedLocality = data.locality ? `, ${data.locality}` : "";
             setCurrentLocation(`${detectedCity}${detectedLocality}`);
-          } catch (error) {
-            // Keep default fallback if reverse geocoding fails
-          }
+          } catch (error) {}
         },
         () => {},
         { timeout: 8000, enableHighAccuracy: false }
@@ -197,11 +298,17 @@ export default function Navbar() {
     }
   };
 
-  const markAllNotificationsRead = () => {
-    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+  // Clears all notifications when "Mark as read" is clicked and explicitly persists empty state to localStorage
+  const clearNotifications = () => {
+    setNotifications([]);
+    try {
+      localStorage.setItem(NOTIFICATIONS_STORAGE_KEY, JSON.stringify([]));
+    } catch (e) {
+      console.error("Failed to clear notifications storage", e);
+    }
   };
 
-  const unreadCount = notifications.filter(n => !n.read).length;
+  const unreadCount = notifications.length;
 
   const SearchDrawerContent = () => (
     <div className="w-full">
@@ -321,16 +428,29 @@ export default function Navbar() {
                 <Link to="/" className="font-serif text-lg font-bold text-[#2D2623] tracking-wide ml-1">BV</Link>
               </div>
 
-              {/* DESKTOP LEFT: Real-Time Location Button */}
-              <div 
-                onClick={() => setShowLocationModal(true)}
-                className="hidden lg:flex items-center gap-1.5 cursor-pointer hover:opacity-80 transition-opacity ml-1 bg-white/60 px-3.5 py-1.5 rounded-full border border-[#EADBD2]/60 shadow-sm"
-              >
-                <Navigation size={13} className="text-[#C56E4E] animate-pulse" />
-                <span className="text-[11px] font-bold text-[#5C4841] truncate max-w-[200px]">
-                  {currentLocation}
-                </span>
-                <ChevronDown size={12} className="text-[#8C7A70]" />
+              {/* DESKTOP LEFT: Real-Time Location Button & Conditional Home Button */}
+              <div className="hidden lg:flex items-center gap-3 ml-1">
+                <div 
+                  onClick={() => setShowLocationModal(true)}
+                  className="flex items-center gap-1.5 cursor-pointer hover:opacity-80 transition-opacity bg-white/60 px-3.5 py-1.5 rounded-full border border-[#EADBD2]/60 shadow-sm"
+                >
+                  <Navigation size={13} className="text-[#C56E4E] animate-pulse" />
+                  <span className="text-[11px] font-bold text-[#5C4841] truncate max-w-[200px]">
+                    {currentLocation}
+                  </span>
+                  <ChevronDown size={12} className="text-[#8C7A70]" />
+                </div>
+
+                {/* Home button shown on homepage if user is logged in */}
+                {currentUser && isHomepage && (
+                  <Link 
+                    to="/main"
+                    className="flex items-center gap-1.5 bg-[#FFF6F0] hover:bg-[#FFEBDD] border border-[#EADBD2] px-3.5 py-1.5 rounded-full text-[11px] font-bold text-[#C56E4E] transition-all shadow-sm"
+                  >
+                    <Home size={13} />
+                    <span>Home</span>
+                  </Link>
+                )}
               </div>
 
               {/* DESKTOP CENTER: Search Input (Only shown if user is logged in) */}
@@ -388,30 +508,36 @@ export default function Navbar() {
                           >
                             <div className="flex items-center justify-between pb-3 border-b border-[#EADBD2] mb-3">
                               <span className="font-serif text-sm font-bold text-[#2D2623]">Notifications</span>
-                              {unreadCount > 0 && (
+                              {notifications.length > 0 && (
                                 <button 
-                                  onClick={markAllNotificationsRead} 
-                                  className="text-[10px] font-bold text-[#C56E4E] hover:underline"
+                                  onClick={clearNotifications} 
+                                  className="text-[10px] font-bold text-[#C56E4E] hover:underline cursor-pointer"
                                 >
-                                  Mark all as read
+                                  Mark as read
                                 </button>
                               )}
                             </div>
                             <div className="space-y-2.5 max-h-[60vh] overflow-y-auto">
-                              {notifications.map((n) => (
-                                <div 
-                                  key={n.id} 
-                                  className={`rounded-2xl p-3 border transition-colors ${n.read ? "bg-white border-[#EADBD2]/60 opacity-75" : "bg-[#FFF6F0] border-[#EADBD2]"}`}
-                                >
-                                  <div className="flex items-center justify-between mb-1">
-                                    <p className="text-xs font-bold text-[#2D2623]">{n.title}</p>
-                                    <span className="text-[9px] text-[#8C7A70] flex items-center gap-1">
-                                      <Clock size={10} /> {n.time}
-                                    </span>
-                                  </div>
-                                  <p className="text-[11px] text-[#5C4841] leading-relaxed">{n.description}</p>
+                              {notifications.length === 0 ? (
+                                <div className="py-6 text-center text-xs font-medium text-[#8C7A70]">
+                                  No new notifications.
                                 </div>
-                              ))}
+                              ) : (
+                                notifications.map((n) => (
+                                  <div 
+                                    key={n.id} 
+                                    className="rounded-2xl p-3 border bg-[#FFF6F0] border-[#EADBD2] transition-colors"
+                                  >
+                                    <div className="flex items-center justify-between mb-1">
+                                      <p className="text-xs font-bold text-[#2D2623]">{n.title}</p>
+                                      <span className="text-[9px] text-[#8C7A70] flex items-center gap-1">
+                                        <Clock size={10} /> {n.time}
+                                      </span>
+                                    </div>
+                                    <p className="text-[11px] text-[#5C4841] leading-relaxed">{n.description}</p>
+                                  </div>
+                                ))
+                              )}
                             </div>
                           </motion.div>
                         )}

@@ -17,7 +17,6 @@ import {
   LockKeyhole,
   Mail,
   Phone,
-  Scissors,
   ShieldCheck,
   Sparkles,
   UserRound,
@@ -251,8 +250,8 @@ export default function Register() {
         )}
 
         <Link to="/" className="relative z-10 flex w-fit items-center gap-4 text-white transition-opacity hover:opacity-90">
-          <span className="grid h-14 w-14 place-items-center rounded-2xl border border-white/20 bg-white/10 shadow-lg backdrop-blur-md">
-            <Scissors size={26} />
+          <span className="grid h-14 w-14 place-items-center rounded-2xl border border-white/20 bg-white/10 shadow-lg backdrop-blur-md overflow-hidden p-2">
+            <img src="/primary.png" alt="BeautyVibe Logo" className="h-full w-full object-contain" />
           </span>
           <span>
             <strong className="block font-serif text-4xl leading-none tracking-tight">BeautyVibe</strong>
@@ -305,8 +304,8 @@ export default function Register() {
 
         <div className="relative z-10 mx-auto w-full max-w-[440px]">
           <Link to="/" className="mb-10 flex w-fit items-center gap-3 lg:hidden">
-            <span className="grid h-12 w-12 place-items-center rounded-2xl bg-[#C56E4E] text-white shadow-lg shadow-[#C56E4E]/20">
-              <Scissors size={22} />
+            <span className="grid h-12 w-12 place-items-center rounded-2xl bg-[#C56E4E] text-white shadow-lg shadow-[#C56E4E]/20 overflow-hidden p-2">
+              <img src="/primary.png" alt="BeautyVibe Logo" className="h-full w-full object-contain" />
             </span>
             <span className="font-serif text-3xl font-bold text-[#2D2623]">BeautyVibe</span>
           </Link>

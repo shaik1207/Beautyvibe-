@@ -6,7 +6,6 @@ import {
   Mail,
   MapPin,
   Phone,
-  Scissors,
   Sparkles,
 } from "lucide-react";
 import { FaFacebookF, FaInstagram } from "react-icons/fa";
@@ -149,16 +148,20 @@ export default function Footer() {
           viewport={{ once: true, amount: 0.18 }}
           className="grid gap-12 sm:grid-cols-2 lg:grid-cols-[1.35fr_.8fr_.95fr_1.15fr] lg:gap-10"
         >
-          {/* Brand */}
+          {/* Brand with /primary.png logo */}
           <motion.div variants={footerItem}>
-            <Link to="/" className="group inline-flex items-center gap-3">
-              <motion.span
-                whileHover={prefersReducedMotion ? {} : { rotate: 8, scale: 1.06 }}
+            <Link to="/" className="group inline-flex items-center gap-3.5">
+              <motion.div
+                whileHover={prefersReducedMotion ? {} : { scale: 1.05 }}
                 transition={{ type: "spring", stiffness: 360, damping: 16 }}
-                className="grid h-12 w-12 place-items-center rounded-2xl bg-[#2d2623] text-[#ffd5be] shadow-lg shadow-[#513d32]/15"
+                className="flex items-center"
               >
-                <Scissors size={22} />
-              </motion.span>
+                <img
+                  src="/primary.png"
+                  alt="BeautyVibe Logo"
+                  className="h-25 w-30 object-contain drop-shadow-sm"
+                />
+              </motion.div>
 
               <span className="font-serif text-3xl tracking-tight text-[#2d2623]">
                 BEAUTY<span className="font-sans text-sm font-semibold tracking-[0.22em] text-[#d57b5a]">VIBE</span>
@@ -245,7 +248,7 @@ export default function Footer() {
                 +1 234 567 890
               </ContactRow>
 
-              <ContactRow href="mailto:hello@lumirae.com" icon={Mail}>
+              <ContactRow href="mailto:beautyvibe@lumirae.com" icon={Mail}>
                 beautyvibe@lumirae.com
               </ContactRow>
 

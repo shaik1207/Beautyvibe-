@@ -96,8 +96,8 @@ export default function UserLogin() {
           {/* Header */}
           <motion.div variants={itemVariants} className="mb-10 text-center lg:text-left">
             <div className="mb-6 flex items-center justify-center gap-3 lg:justify-start">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#FFF6F0] text-[#C56E4E] shadow-sm border border-[#EADBD2]">
-                <Sparkles size={24} strokeWidth={1.5} />
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#FFF6F0] text-[#C56E4E] shadow-sm border border-[#EADBD2] overflow-hidden p-1.5">
+                <img src="/primary.png" alt="BeautyVibe Logo" className="h-full w-full object-contain" />
               </div>
               <span className="font-serif text-2xl font-bold tracking-tight text-[#2D2623]">
                 BeautyVibe
