@@ -55,6 +55,21 @@ export default function Services() {
     fetchServices();
   }, []);
 
+  // Bulletproof image resolver for admin-uploaded images & absolute URLs
+  const getServiceImageUrl = (service) => {
+    const rawImg = service.image || service.imageUrl || service.photo || service.img;
+    if (!rawImg) {
+      return "https://images.unsplash.com/photo-1522337660859-02fbefca4702?w=800&q=80";
+    }
+    if (rawImg.startsWith("http://") || rawImg.startsWith("https://") || rawImg.startsWith("data:") || rawImg.startsWith("blob:")) {
+      return rawImg;
+    }
+    // Prepend backend base URL for relative paths (e.g. /uploads/...)
+    const baseURL = API.defaults.baseURL ? API.defaults.baseURL.replace(/\/api\/?$/, "") : "";
+    const cleanPath = rawImg.startsWith("/") ? rawImg : `/${rawImg}`;
+    return baseURL ? `${baseURL}${cleanPath}` : cleanPath;
+  };
+
   const filteredServices = services.filter((s) => {
     const matchesCategory = selectedCategory === "All" || 
       (s.category && s.category.toLowerCase() === selectedCategory.toLowerCase());
@@ -181,9 +196,7 @@ export default function Services() {
               {filteredServices.map((service) => {
                 const sId = String(service.id || service._id);
                 const sName = service.title || service.name;
-                const sImg = service.image?.startsWith("http") 
-                  ? service.image 
-                  : "https://images.unsplash.com/photo-1522337660859-02fbefca4702?w=800&q=80";
+                const sImg = getServiceImageUrl(service);
                 const isFavorited = favorites.includes(sId);
 
                 return (

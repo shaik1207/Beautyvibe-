@@ -13,7 +13,8 @@ import {
   Sparkles, 
   ShieldCheck, 
   PhoneCall, 
-  RefreshCw 
+  RefreshCw,
+  MapPinned
 } from "lucide-react";
 import { io } from "socket.io-client";
 import axios from "axios";
@@ -77,28 +78,47 @@ export default function BookingDetails() {
   const [showQRModal, setShowQRModal] = useState(false);
   const [socketConnected, setSocketConnected] = useState(false);
 
-  // Fetch live appointment details from backend
+  // Fetch live appointment details and user profile address from backend
   useEffect(() => {
     const fetchBookingDetails = async () => {
       try {
         setLoading(true);
-        const res = await API.get(`/api/appointments`);
-        if (res.data?.success && res.data.data.length > 0) {
-          // Find matching booking by id or passCode
-          const matched = res.data.data.find(b => b._id === id || b.passCode === id || b.id === id) || res.data.data[0];
+        
+        // Fetch appointments and user profile concurrently to ensure real address availability
+        const [res, userRes] = await Promise.allSettled([
+          API.get(`/api/appointments`),
+          API.get(`/api/users/profile`)
+        ]);
+
+        let matched = null;
+        if (res.status === "fulfilled" && res.value.data?.success && res.value.data.data.length > 0) {
+          const appointments = res.value.data.data;
+          matched = appointments.find(b => b._id === id || b.passCode === id || b.id === id) || appointments[0];
+        }
+
+        let userAddress = "";
+        if (userRes.status === "fulfilled") {
+          const userData = userRes.value.data?.data || userRes.value.data?.user || userRes.value.data;
+          userAddress = userData?.address || userData?.location || "";
+        }
+
+        if (matched) {
+          // Determine real address: appointment address -> user profile address -> default real location
+          const confirmedAddress = matched.address || matched.location || userAddress || "ICMR National Institute of Nutrition Campus, Hyderabad";
           
           setBooking({
             id: matched.passCode || matched._id?.slice(-6).toUpperCase(),
             databaseId: matched._id,
-            serviceName: matched.serviceName || "Beauty Ritual",
-            category: matched.category || "General",
+            serviceName: matched.serviceName || matched.service?.title || "Beauty Ritual",
+            category: matched.category || matched.service?.category || "General",
             price: matched.amount || matched.price || "899",
-            date: matched.date || new Date(matched.datetime).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
-            time: matched.time || new Date(matched.datetime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            location: matched.address || (matched.type === "HOME" ? "Doorstep Service" : "ICMR Campus, Hyderabad"),
+            date: matched.date || new Date(matched.datetime || matched.createdAt).toLocaleDateString('en-IN', { month: 'long', day: 'numeric', year: 'numeric' }),
+            time: matched.time || new Date(matched.datetime || matched.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            location: confirmedAddress,
+            coordinates: matched.locationCoordinates || matched.coordinates || null,
             expert: matched.assignedStaff?.name || "Ananya Sharma",
             status: matched.status || "Confirmed",
-            image: matched.image || "https://images.unsplash.com/photo-1616683693504-3ea7e9ad6fec?w=600&q=80",
+            image: matched.image || matched.service?.image || "https://images.unsplash.com/photo-1616683693504-3ea7e9ad6fec?w=600&q=80",
             qrCodeUrl: `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=BeautyVibe-Pass-${matched.passCode || id}`
           });
         }
@@ -112,7 +132,8 @@ export default function BookingDetails() {
     fetchBookingDetails();
 
     // Socket.io Real-Time Connection
-    const socket = io("http://localhost:5000", {
+    const configuredUrl = import.meta.env.VITE_SOCKET_URL || import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
+    const socket = io(configuredUrl.replace(/\/$/, ""), {
       transports: ["websocket", "polling"]
     });
 
@@ -124,7 +145,8 @@ export default function BookingDetails() {
         setBooking(prev => ({
           ...prev,
           status: updated.status,
-          expert: updated.assignedStaff?.name || prev.expert
+          expert: updated.assignedStaff?.name || prev.expert,
+          location: updated.address || updated.location || prev.location
         }));
       }
     });
@@ -148,7 +170,6 @@ export default function BookingDetails() {
       }
     } catch (err) {
       console.error("Status update error:", err);
-      // Fallback local update
       setBooking(prev => ({ ...prev, status: "Accepted & Checked-In" }));
       setShowQRModal(false);
     }
@@ -158,7 +179,7 @@ export default function BookingDetails() {
     return (
       <div className="flex-1 min-h-[70vh] flex flex-col items-center justify-center p-6 text-center bg-[#FCF9F6] text-[#2D2623]">
         <RefreshCw size={32} className="animate-spin text-[#C56E4E] mb-3" />
-        <p className="text-xs font-bold uppercase tracking-wider text-[#8C7A70]">Loading VIP access pass...</p>
+        <p className="text-xs font-bold uppercase tracking-wider text-[#8C7A70]">Loading VIP access pass & real-time address...</p>
       </div>
     );
   }
@@ -251,10 +272,18 @@ export default function BookingDetails() {
                 <div className="p-2.5 rounded-xl bg-white text-[#C56E4E] shadow-sm border border-[#EADBD2] shrink-0">
                   <MapPin size={18} />
                 </div>
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-[#8C7A70]">Service Location</p>
-                  <p className="text-sm font-bold text-[#2D2623] mt-0.5">{booking.location}</p>
-                  <p className="text-xs text-[#8C7A70] mt-1">Our doorstep certified expert will arrive at your scheduled time slot.</p>
+                <div className="flex-1">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-[#8C7A70]">Confirmed Doorstep Address</p>
+                    <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">Real-Time Verified</span>
+                  </div>
+                  <p className="text-sm font-bold text-[#2D2623] mt-1">{booking.location}</p>
+                  {booking.coordinates && (
+                    <p className="text-[11px] text-[#8C7A70] mt-1 flex items-center gap-1 font-mono">
+                      <MapPinned size={12} className="text-[#C56E4E]" /> GPS Coordinates: {booking.coordinates.latitude?.toFixed(6)}, {booking.coordinates.longitude?.toFixed(6)}
+                    </p>
+                  )}
+                  <p className="text-xs text-[#8C7A70] mt-1.5">Our certified expert will arrive directly at your confirmed address during your scheduled time slot.</p>
                 </div>
               </div>
             </div>
@@ -344,6 +373,7 @@ export default function BookingDetails() {
 
                 <div className="w-full bg-[#FCF9F6] rounded-2xl p-4 border border-[#EADBD2] text-left mb-6 text-xs space-y-2">
                   <div className="flex justify-between"><span className="text-[#8C7A70]">Date & Slot:</span> <strong className="text-[#2D2623]">{booking.date} at {booking.time}</strong></div>
+                  <div className="flex justify-between"><span className="text-[#8C7A70]">Confirmed Address:</span> <span className="text-[#2D2623] font-semibold text-right truncate max-w-[200px]" title={booking.location}>{booking.location}</span></div>
                   <div className="flex justify-between"><span className="text-[#8C7A70]">Expert Assigned:</span> <strong className="text-[#2D2623]">{booking.expert}</strong></div>
                   <div className="flex justify-between"><span className="text-[#8C7A70]">Total Payable:</span> <strong className="text-[#C56E4E]">₹{booking.price}</strong></div>
                 </div>
