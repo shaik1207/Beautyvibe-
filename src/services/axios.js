@@ -5,25 +5,24 @@ const getBaseUrl = () => {
   const rawUrl = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL;
   
   if (typeof rawUrl === 'string' && rawUrl.trim() !== '') {
-    // Finds the first actual http/https link and ignores surrounding text/brackets
     const match = rawUrl.match(/(https?:\/\/[^\s)\]'"]+)/);
     if (match) {
-      // Strip trailing slashes to prevent double slashes in API endpoints
       return match[1].replace(/\/+$/, '');
     }
   }
 
-  // Fallback warning if environment variable is missing in production
+  // In production, fallback directly to the live Render backend instead of localhost
   if (import.meta.env.PROD) {
-    console.warn("⚠️ VITE_API_BASE_URL is not defined in your Vercel environment variables. API calls may fail.");
+    console.warn("⚠️ VITE_API_BASE_URL is missing. Defaulting to live Render backend.");
+    return 'https://beautyvibe-backend.onrender.com/api';
   }
 
-  return 'http://localhost:5000';
+  return 'http://localhost:5000/api';
 };
 
 const API = axios.create({
   baseURL: getBaseUrl(),
-  timeout: 15000, // 15s timeout to prevent hanging during cold starts
+  timeout: 60000, // Increased to 60s to safely handle Render cold starts
   withCredentials: true, // Required for secure cookie and token sharing
 });
 
@@ -43,17 +42,32 @@ API.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// Response interceptor to gracefully log 401s and network/CORS issues
+// Response interceptor with auto-retry for Render cold starts
 API.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
+    const originalRequest = error.config;
+
+    // Check if it's a network error or timeout (likely a Render cold start) and we haven't retried yet
+    const isColdStartOrNetworkError = !error.response || error.code === 'ECONNABORTED' || error.message?.includes('timeout');
+
+    if (isColdStartOrNetworkError && !originalRequest._retry) {
+      originalRequest._retry = true;
+      console.warn("⏳ Backend is waking up from a cold start. Retrying request in 5 seconds...");
+      
+      // Wait 5 seconds for Render to spin up, then retry the request automatically
+      await new Promise((resolve) => setTimeout(resolve, 5000));
+      return API(originalRequest);
+    }
+
     if (error.response) {
       if (error.response.status === 401) {
         console.warn("API Request unauthorized (401). Please check user session.");
       }
     } else {
-      console.error("Network or CORS error. Please verify your VITE_API_BASE_URL points to a live backend URL.");
+      console.error("Network or CORS error. Please verify your backend server status.");
     }
+    
     return Promise.reject(error);
   }
 );
