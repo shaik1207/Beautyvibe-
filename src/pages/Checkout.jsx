@@ -194,8 +194,21 @@ export default function Checkout() {
         throw new Error("Doorstep delivery address is required.");
       }
 
+      // Safely parse serviceId or omit it if invalid to prevent foreign key errors
+      let parsedServiceId = null;
+      if (
+        bookingDraft.serviceId &&
+        bookingDraft.serviceId !== "undefined" &&
+        bookingDraft.serviceId !== "null"
+      ) {
+        const numId = Number(bookingDraft.serviceId);
+        if (Number.isFinite(numId) && numId > 0) {
+          parsedServiceId = numId;
+        }
+      }
+
       const payload = {
-        serviceId: bookingDraft.serviceId || 1,
+        serviceId: parsedServiceId, // Safely formatted as number or null
         serviceName: serviceName.trim(),
         category: bookingDraft.category || "General",
         amount,
