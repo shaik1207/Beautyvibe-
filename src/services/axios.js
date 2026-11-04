@@ -1,8 +1,7 @@
-
 import axios from "axios";
 
 // ============================================
-// API BASE URL
+// API BASE URL (Fixed: Removed trailing /api to prevent double /api/api bugs)
 // ============================================
 
 const getBaseUrl = () => {
@@ -11,23 +10,19 @@ const getBaseUrl = () => {
     import.meta.env.VITE_API_URL;
 
   if (typeof rawUrl === "string" && rawUrl.trim()) {
-    // Extract a valid HTTP/HTTPS URL
     const match = rawUrl.match(/https?:\/\/[^\s"'<>]+/i);
 
     if (match) {
-      return match[0].replace(/\/+$/, "");
+      // Strip trailing slashes and any accidental trailing /api
+      return match[0].replace(/\/+$/, "").replace(/\/api$/i, "");
     }
   }
 
   if (import.meta.env.PROD) {
-    console.warn(
-      "[BeautyVibe] API URL missing. Using production backend."
-    );
-
-    return "https://beautyvibe-backend.onrender.com/api";
+    return "https://beautyvibe-backend.onrender.com";
   }
 
-  return "http://localhost:5000/api";
+  return "http://localhost:5000";
 };
 
 const API_BASE_URL = getBaseUrl();
@@ -40,17 +35,16 @@ console.info("[BeautyVibe] API Base URL:", API_BASE_URL);
 
 const getAuthToken = () => {
   try {
-    // Prefer the regular user token, then admin token,
-    // then the legacy token key.
     return (
       localStorage.getItem("beautyvibe_user_token") ||
       localStorage.getItem("beautyvibe_admin_token") ||
       localStorage.getItem("token") ||
+      sessionStorage.getItem("beautyvibe_user_token") ||
       null
     );
   } catch (error) {
     console.warn(
-      "[BeautyVibe] Unable to access localStorage:",
+      "[BeautyVibe] Unable to access storage for token:",
       error.message
     );
 
@@ -64,11 +58,8 @@ const getAuthToken = () => {
 
 const API = axios.create({
   baseURL: API_BASE_URL,
-
   timeout: 60000,
-
   withCredentials: true,
-
   headers: {
     Accept: "application/json",
   },
@@ -82,7 +73,6 @@ API.interceptors.request.use(
   (config) => {
     const token = getAuthToken();
 
-    // Ensure headers exist
     config.headers = config.headers || {};
 
     if (token) {
@@ -95,11 +85,7 @@ API.interceptors.request.use(
   },
 
   (error) => {
-    console.error(
-      "[BeautyVibe] Request interceptor error:",
-      error
-    );
-
+    console.error("[BeautyVibe] Request interceptor error:", error);
     return Promise.reject(error);
   }
 );
@@ -121,19 +107,13 @@ API.interceptors.response.use(
     }
 
     const status = error.response?.status;
-
     const isNetworkError =
       !error.response ||
       error.code === "ECONNABORTED" ||
       error.code === "ETIMEDOUT" ||
       error.message?.toLowerCase().includes("timeout");
 
-    // Retry only safe read operations.
-    // Do NOT automatically retry POST/PUT/PATCH/DELETE.
-    const method = (
-      originalRequest.method || "get"
-    ).toLowerCase();
-
+    const method = (originalRequest.method || "get").toLowerCase();
     const isSafeMethod = ["get", "head", "options"].includes(method);
 
     if (
@@ -147,9 +127,7 @@ API.interceptors.response.use(
         "[BeautyVibe] Backend connection failed. Retrying GET request in 5 seconds..."
       );
 
-      await new Promise((resolve) =>
-        setTimeout(resolve, 5000)
-      );
+      await new Promise((resolve) => setTimeout(resolve, 5000));
 
       return API(originalRequest);
     }
@@ -165,45 +143,28 @@ API.interceptors.response.use(
         status,
         url: originalRequest.url,
         method,
-        message:
-          responseData?.message ||
-          error.message,
-        code: responseData?.code,
+        message: responseData?.message || error.message,
       });
 
       if (status === 401) {
         console.warn(
-          "[BeautyVibe] Unauthorized. User session may have expired."
+          "[BeautyVibe] Unauthorized (401). Please verify Google/Firebase token storage."
         );
-
-        // Do not automatically clear tokens or redirect here.
-        // Different applications may handle user/admin sessions differently.
       }
 
       if (status === 403) {
-        console.warn(
-          "[BeautyVibe] Access forbidden. Check user permissions."
-        );
+        console.warn("[BeautyVibe] Access forbidden (403).");
       }
 
       if (status >= 500) {
-        console.error(
-          "[BeautyVibe] Backend server error. Check Render logs."
-        );
+        console.error("[BeautyVibe] Backend server error (5xx). Check Render logs.");
       }
     } else {
-      console.error(
-        "[BeautyVibe] Network/CORS/timeout error:",
-        error.message
-      );
+      console.error("[BeautyVibe] Network/CORS/timeout error:", error.message);
     }
 
     return Promise.reject(error);
   }
 );
-
-// ============================================
-// EXPORT
-// ============================================
 
 export default API;
