@@ -1,168 +1,73 @@
-import axios from "axios";
+import axios from 'axios';
 
-// ============================================
-// API BASE URL (Fixed: Removed trailing /api to prevent double /api/api bugs)
-// ============================================
-
+// Safely extract and normalize the base URL
 const getBaseUrl = () => {
-  const rawUrl =
-    import.meta.env.VITE_API_BASE_URL ||
-    import.meta.env.VITE_API_URL;
-
-  if (typeof rawUrl === "string" && rawUrl.trim()) {
-    const match = rawUrl.match(/https?:\/\/[^\s"'<>]+/i);
-
+  const rawUrl = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL;
+  
+  if (typeof rawUrl === 'string' && rawUrl.trim() !== '') {
+    const match = rawUrl.match(/(https?:\/\/[^\s)\]'"]+)/);
     if (match) {
-      // Strip trailing slashes and any accidental trailing /api
-      return match[0].replace(/\/+$/, "").replace(/\/api$/i, "");
+      return match[1].replace(/\/+$/, '');
     }
   }
 
+  // In production, fallback directly to the live Render backend instead of localhost
   if (import.meta.env.PROD) {
-    return "https://beautyvibe-backend.onrender.com";
+    console.warn("⚠️ VITE_API_BASE_URL is missing. Defaulting to live Render backend.");
+    return 'https://beautyvibe-backend.onrender.com/api';
   }
 
-  return "http://localhost:5000";
+  return 'http://localhost:5000/api';
 };
-
-const API_BASE_URL = getBaseUrl();
-
-console.info("[BeautyVibe] API Base URL:", API_BASE_URL);
-
-// ============================================
-// TOKEN MANAGEMENT
-// ============================================
-
-const getAuthToken = () => {
-  try {
-    return (
-      localStorage.getItem("beautyvibe_user_token") ||
-      localStorage.getItem("beautyvibe_admin_token") ||
-      localStorage.getItem("token") ||
-      sessionStorage.getItem("beautyvibe_user_token") ||
-      null
-    );
-  } catch (error) {
-    console.warn(
-      "[BeautyVibe] Unable to access storage for token:",
-      error.message
-    );
-
-    return null;
-  }
-};
-
-// ============================================
-// AXIOS INSTANCE
-// ============================================
 
 const API = axios.create({
-  baseURL: API_BASE_URL,
-  timeout: 60000,
-  withCredentials: true,
-  headers: {
-    Accept: "application/json",
-  },
+  baseURL: getBaseUrl(),
+  timeout: 60000, // Increased to 60s to safely handle Render cold starts
+  withCredentials: true, // Required for secure cookie and token sharing
 });
 
-// ============================================
-// REQUEST INTERCEPTOR
-// ============================================
-
+// Intercept every request to inject the correct bearer token
 API.interceptors.request.use(
   (config) => {
-    const token = getAuthToken();
-
-    config.headers = config.headers || {};
+    const token = 
+      localStorage.getItem('beautyvibe_user_token') || 
+      localStorage.getItem('beautyvibe_admin_token') || 
+      localStorage.getItem('token');
 
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
-    } else {
-      delete config.headers.Authorization;
     }
-
     return config;
-  },
-
-  (error) => {
-    console.error("[BeautyVibe] Request interceptor error:", error);
-    return Promise.reject(error);
-  }
+  }, 
+  (error) => Promise.reject(error)
 );
 
-// ============================================
-// RESPONSE INTERCEPTOR
-// ============================================
-
+// Response interceptor with auto-retry for Render cold starts
 API.interceptors.response.use(
-  (response) => {
-    return response;
-  },
-
+  (response) => response,
   async (error) => {
     const originalRequest = error.config;
 
-    if (!originalRequest) {
-      return Promise.reject(error);
-    }
+    // Check if it's a network error or timeout (likely a Render cold start) and we haven't retried yet
+    const isColdStartOrNetworkError = !error.response || error.code === 'ECONNABORTED' || error.message?.includes('timeout');
 
-    const status = error.response?.status;
-    const isNetworkError =
-      !error.response ||
-      error.code === "ECONNABORTED" ||
-      error.code === "ETIMEDOUT" ||
-      error.message?.toLowerCase().includes("timeout");
-
-    const method = (originalRequest.method || "get").toLowerCase();
-    const isSafeMethod = ["get", "head", "options"].includes(method);
-
-    if (
-      isNetworkError &&
-      isSafeMethod &&
-      !originalRequest._retry
-    ) {
+    if (isColdStartOrNetworkError && !originalRequest._retry) {
       originalRequest._retry = true;
-
-      console.warn(
-        "[BeautyVibe] Backend connection failed. Retrying GET request in 5 seconds..."
-      );
-
+      console.warn("⏳ Backend is waking up from a cold start. Retrying request in 5 seconds...");
+      
+      // Wait 5 seconds for Render to spin up, then retry the request automatically
       await new Promise((resolve) => setTimeout(resolve, 5000));
-
       return API(originalRequest);
     }
 
-    // ========================================
-    // SERVER ERROR HANDLING
-    // ========================================
-
     if (error.response) {
-      const responseData = error.response.data;
-
-      console.error("[BeautyVibe] API Error:", {
-        status,
-        url: originalRequest.url,
-        method,
-        message: responseData?.message || error.message,
-      });
-
-      if (status === 401) {
-        console.warn(
-          "[BeautyVibe] Unauthorized (401). Please verify Google/Firebase token storage."
-        );
-      }
-
-      if (status === 403) {
-        console.warn("[BeautyVibe] Access forbidden (403).");
-      }
-
-      if (status >= 500) {
-        console.error("[BeautyVibe] Backend server error (5xx). Check Render logs.");
+      if (error.response.status === 401) {
+        console.warn("API Request unauthorized (401). Please check user session.");
       }
     } else {
-      console.error("[BeautyVibe] Network/CORS/timeout error:", error.message);
+      console.error("Network or CORS error. Please verify your backend server status.");
     }
-
+    
     return Promise.reject(error);
   }
 );
