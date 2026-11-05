@@ -22,6 +22,9 @@ import {
   Briefcase,
   Check,
   Trash2,
+  Info,
+  User,
+  Phone,
 } from "lucide-react";
 import { io } from "socket.io-client";
 import API from "../services/axios";
@@ -101,86 +104,6 @@ const parseSlotToMinutes = (slot) => {
   return hours * 60 + minutes;
 };
 
-/* =========================================
-   PAYMENT APP BRAND MARKS
-========================================= */
-
-function PaymentBrand({ brand }) {
-  if (brand === "gpay") {
-    return (
-      <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-gray-100 bg-white shadow-sm">
-        <svg viewBox="0 0 48 48" className="h-8 w-8" aria-label="Google Pay">
-          <path
-            fill="#4285F4"
-            d="M24 9a15 15 0 1 0 14.5 18.8h-7.3A8 8 0 1 1 24 16a7.8 7.8 0 0 1 5.6 2.3l5-5A14.9 14.9 0 0 0 24 9Z"
-          />
-          <path
-            fill="#34A853"
-            d="M38.5 27.8H24v-6.2h14.9c.2 1 .3 2 .3 3.1 0 1.1-.2 2.1-.7 3.1Z"
-          />
-          <path
-            fill="#FBBC05"
-            d="M24 16a8 8 0 0 0-7.3 4.7l-5.8-3.4A14.8 14.8 0 0 1 24 9v7Z"
-          />
-          <path
-            fill="#EA4335"
-            d="M16.7 20.7A8 8 0 0 0 16 24c0 1.4.4 2.8 1.1 3.9l-5.8 3.4A14.8 14.8 0 0 1 10 24c0-2.4.6-4.7 1.6-6.7l5.1 3.4Z"
-          />
-        </svg>
-      </div>
-    );
-  }
-
-  if (brand === "phonepe") {
-    return (
-      <div
-        className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#5F259F] text-white shadow-sm"
-        aria-label="PhonePe"
-      >
-        <span className="text-2xl font-black">पे</span>
-      </div>
-    );
-  }
-
-  if (brand === "paytm") {
-    return (
-      <div
-        className="flex h-11 w-11 items-center justify-center rounded-xl border border-gray-100 bg-white shadow-sm"
-        aria-label="Paytm"
-      >
-        <span className="text-[12px] font-black tracking-tight">
-          <span className="text-[#00BAF2]">pay</span>
-          <span className="text-[#002970]">tm</span>
-        </span>
-      </div>
-    );
-  }
-
-  if (brand === "bhim") {
-    return (
-      <div
-        className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#F27A21] text-white shadow-sm"
-        aria-label="BHIM UPI"
-      >
-        <span className="text-sm font-black">BHIM</span>
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gray-100 text-gray-700">
-      <Smartphone size={22} />
-    </div>
-  );
-}
-
-const paymentOptions = [
-  { id: "gpay", label: "Google Pay", brand: "gpay", description: "Pay using GPay" },
-  { id: "phonepe", label: "PhonePe", brand: "phonepe", description: "Pay using PhonePe" },
-  { id: "paytm", label: "Paytm", brand: "paytm", description: "Pay using Paytm" },
-  { id: "bhim", label: "BHIM UPI", brand: "bhim", description: "Pay using BHIM" },
-];
-
 export default function BookAppointment() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
@@ -190,6 +113,11 @@ export default function BookAppointment() {
   const [bookedSlots, setBookedSlots] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedServiceIds, setSelectedServiceIds] = useState([]);
+
+  // Customer Details State
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [mobileNumber, setMobileNumber] = useState("");
 
   const [liveNow, setLiveNow] = useState(() => new Date());
   const today = formatLocalDate(liveNow);
@@ -228,24 +156,9 @@ export default function BookAppointment() {
     }
   });
 
-  const [address, setAddress] = useState("ICMR National Institute of Nutrition Campus, Hyderabad");
+  const [address, setAddress] = useState("");
   const [locationCoordinates, setLocationCoordinates] = useState(null);
   const [locating, setLocating] = useState(false);
-
-  // Payment State & Saved Cards
-  const [paymentMethod, setPaymentMethod] = useState("upi");
-  const [selectedUpiApp, setSelectedUpiApp] = useState("gpay");
-
-  const [savedCards, setSavedCards] = useState(() => {
-    try {
-      const local = localStorage.getItem("beautyvibe_payments");
-      const parsed = local ? JSON.parse(local) : [];
-      return parsed.filter((p) => p.type === "CARD" || p.number || p.last4);
-    } catch {
-      return [];
-    }
-  });
-  const [selectedCardId, setSelectedCardId] = useState(null);
 
   const [error, setError] = useState("");
   const [socketConnected, setSocketConnected] = useState(false);
@@ -261,17 +174,16 @@ export default function BookAppointment() {
   }, []);
 
   /* =========================================
-     FETCH SAVED ADDRESSES, PAYMENTS & PROFILE
+     FETCH SAVED ADDRESSES & USER PROFILE
   ========================================= */
   useEffect(() => {
     let cancelled = false;
 
     const fetchUserSettings = async () => {
       try {
-        const [profileRes, addressRes, paymentRes] = await Promise.allSettled([
+        const [profileRes, addressRes] = await Promise.allSettled([
           API.get("/api/users/profile"),
           API.get("/api/users/addresses"),
-          API.get("/api/users/payments"),
         ]);
 
         if (cancelled) return;
@@ -281,30 +193,21 @@ export default function BookAppointment() {
           if (Array.isArray(list) && list.length > 0) {
             setSavedAddresses(list);
             localStorage.setItem("beautyvibe_addresses", JSON.stringify(list));
-            if (list[0]?.fullAddress || list[0]?.address) {
-              setAddress(list[0].fullAddress || list[0].address);
-            }
-          }
-        }
-
-        if (paymentRes.status === "fulfilled") {
-          const pList = paymentRes.value.data?.data || paymentRes.value.data?.payments || paymentRes.value.data;
-          if (Array.isArray(pList)) {
-            const cards = pList.filter((p) => p.type === "CARD" || p.number || p.last4);
-            setSavedCards(cards);
-            localStorage.setItem("beautyvibe_payments", JSON.stringify(pList));
-            if (cards.length > 0 && !selectedCardId) {
-              setSelectedCardId(cards[0]._id || cards[0].id);
-            }
           }
         }
 
         if (profileRes.status === "fulfilled") {
           const userData = profileRes.value.data?.data || profileRes.value.data?.user || profileRes.value.data;
-          if (userData && (userData.address || userData.location)) {
-            const userAddr = userData.address || userData.location;
-            if (userAddr.trim() && addressRes.status !== "fulfilled") {
-              setAddress(userAddr);
+          if (userData) {
+            if (userData.firstName) setFirstName(userData.firstName);
+            if (userData.lastName) setLastName(userData.lastName);
+            if (!userData.firstName && userData.name) {
+              const parts = userData.name.trim().split(" ");
+              setFirstName(parts[0] || "");
+              setLastName(parts.slice(1).join(" ") || "");
+            }
+            if (userData.phone || userData.mobile || userData.phoneNumber) {
+              setMobileNumber(userData.phone || userData.mobile || userData.phoneNumber);
             }
           }
         }
@@ -317,10 +220,10 @@ export default function BookAppointment() {
     return () => {
       cancelled = true;
     };
-  }, [selectedCardId]);
+  }, []);
 
   /* =========================================
-     FETCH SERVICES
+     FETCH SERVICES WITH ROBUST IMAGE RESOLUTION
   ========================================= */
   useEffect(() => {
     let cancelled = false;
@@ -338,15 +241,39 @@ export default function BookAppointment() {
         if (cancelled) return;
 
         if (Array.isArray(rawServices)) {
-          const formatted = rawServices.map((service) => ({
-            id: String(service._id || service.id),
-            name: service.title || service.name || "Beauty Ritual",
-            price: Number(service.price) || 0,
-            duration: service.duration || "45 min",
-            image:
+          const formatted = rawServices.map((service) => {
+            const rawImg =
               service.image ||
-              "https://images.unsplash.com/photo-1562322140-8baeececf3df?w=200&q=80",
-          }));
+              service.imageUrl ||
+              service.img ||
+              service.photo ||
+              "";
+
+            let resolvedImage =
+              "https://images.unsplash.com/photo-1562322140-8baeececf3df?w=400&q=80";
+
+            if (typeof rawImg === "string" && rawImg.trim()) {
+              if (
+                rawImg.startsWith("http://") ||
+                rawImg.startsWith("https://") ||
+                rawImg.startsWith("data:")
+              ) {
+                resolvedImage = rawImg;
+              } else {
+                const apiBase =
+                  import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
+                resolvedImage = `${apiBase.replace(/\/$/, "")}/${rawImg.replace(/^\//, "")}`;
+              }
+            }
+
+            return {
+              id: String(service._id || service.id),
+              name: service.title || service.name || "Beauty Ritual",
+              price: Number(service.price) || 0,
+              duration: service.duration || "45 min",
+              image: resolvedImage,
+            };
+          });
 
           setAllServices(formatted);
 
@@ -546,7 +473,7 @@ export default function BookAppointment() {
         name: "Select Ritual",
         price: 0,
         duration: "45 min",
-        image: "https://images.unsplash.com/photo-1562322140-8baeececf3df?w=200&q=80",
+        image: "https://images.unsplash.com/photo-1562322140-8baeececf3df?w=400&q=80",
       },
     [allServices, primarySelectedId]
   );
@@ -589,6 +516,21 @@ export default function BookAppointment() {
     event.preventDefault();
     setError("");
 
+    if (!firstName.trim()) {
+      setError("Please enter your first name.");
+      return;
+    }
+
+    if (!lastName.trim()) {
+      setError("Please enter your last name.");
+      return;
+    }
+
+    if (!mobileNumber.trim() || !/^\d{10}$/.test(mobileNumber.replace(/\D/g, ""))) {
+      setError("Please enter a valid 10-digit mobile number.");
+      return;
+    }
+
     if (!primaryService.id || totalCalculatedPrice <= 0) {
       setError("Please select a valid service with a valid price.");
       return;
@@ -614,15 +556,13 @@ export default function BookAppointment() {
       return;
     }
 
-    if (paymentMethod === "card" && savedCards.length > 0 && !selectedCardId) {
-      setError("Please select one of your saved cards to continue.");
-      return;
-    }
-
     setSubmitting(true);
 
     try {
       const bookingDraft = {
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        mobileNumber: mobileNumber.trim(),
         serviceId: primaryService.id,
         serviceName: primaryService.name,
         additionalServices: additionalSelectedServices.map((service) => service.name),
@@ -632,9 +572,7 @@ export default function BookAppointment() {
         time,
         type: "HOME",
         address: address.trim(),
-        paymentMethod,
-        upiApp: paymentMethod === "upi" ? selectedUpiApp : null,
-        selectedCard: paymentMethod === "card" ? savedCards.find(c => (c._id || c.id) === selectedCardId) : null,
+        paymentMethod: "cod", // Enforced COD
         location: locationCoordinates,
         image: primaryService.image,
       };
@@ -724,10 +662,74 @@ export default function BookAppointment() {
             variants={fadeUp}
             className="space-y-8 rounded-[2.5rem] border border-[#EADBD2] bg-white p-6 shadow-sm sm:p-8 lg:col-span-7"
           >
+            {/* Customer Information */}
+            <section>
+              <h2 className="mb-4 font-serif text-lg font-bold flex items-center justify-between">
+                <span>1. Customer Details</span>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-[#C56E4E] bg-[#FFF6F0] px-3 py-1 rounded-full border border-[#EADBD2]">
+                  Required
+                </span>
+              </h2>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-[#8C7A70]">
+                    First Name
+                  </label>
+                  <div className="relative">
+                    <User size={16} className="absolute left-4 top-3.5 text-[#8C7A70]" />
+                    <input
+                      type="text"
+                      value={firstName}
+                      onChange={(e) => setFirstName(e.target.value)}
+                      placeholder="e.g., Aarav"
+                      className="w-full rounded-2xl border border-[#EADBD2] bg-[#FCF9F6] p-3 pl-11 text-sm font-medium text-[#2D2623] outline-none transition focus:border-[#C56E4E] focus:ring-2 focus:ring-[#C56E4E]/10"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-[#8C7A70]">
+                    Last Name
+                  </label>
+                  <div className="relative">
+                    <User size={16} className="absolute left-4 top-3.5 text-[#8C7A70]" />
+                    <input
+                      type="text"
+                      value={lastName}
+                      onChange={(e) => setLastName(e.target.value)}
+                      placeholder="e.g., Sharma"
+                      className="w-full rounded-2xl border border-[#EADBD2] bg-[#FCF9F6] p-3 pl-11 text-sm font-medium text-[#2D2623] outline-none transition focus:border-[#C56E4E] focus:ring-2 focus:ring-[#C56E4E]/10"
+                      required
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-4">
+                <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-[#8C7A70]">
+                  Mobile Number
+                </label>
+                <div className="relative">
+                  <Phone size={16} className="absolute left-4 top-3.5 text-[#8C7A70]" />
+                  <input
+                    type="tel"
+                    value={mobileNumber}
+                    onChange={(e) => setMobileNumber(e.target.value)}
+                    placeholder="10-digit mobile number"
+                    maxLength={10}
+                    className="w-full rounded-2xl border border-[#EADBD2] bg-[#FCF9F6] p-3 pl-11 text-sm font-medium text-[#2D2623] outline-none transition focus:border-[#C56E4E] focus:ring-2 focus:ring-[#C56E4E]/10"
+                    required
+                  />
+                </div>
+              </div>
+            </section>
+
             {/* Selected service */}
             <section>
               <h2 className="mb-4 flex items-center justify-between font-serif text-lg font-bold">
-                <span>1. Selected Ritual</span>
+                <span>2. Selected Ritual</span>
                 <span className="rounded-full border border-[#EADBD2] bg-[#FFF6F0] px-3 py-1 text-xs font-bold text-[#C56E4E]">
                   Primary Service
                 </span>
@@ -737,7 +739,11 @@ export default function BookAppointment() {
                 <img
                   src={primaryService.image}
                   alt={primaryService.name}
-                  className="h-16 w-16 rounded-2xl object-cover"
+                  className="h-16 w-16 rounded-2xl object-cover bg-white shadow-sm"
+                  onError={(e) => {
+                    e.target.onerror = null;
+                    e.target.src = "https://images.unsplash.com/photo-1562322140-8baeececf3df?w=400&q=80";
+                  }}
                 />
                 <div className="flex-1 min-w-0">
                   <h3 className="font-serif text-base font-bold truncate">
@@ -803,7 +809,11 @@ export default function BookAppointment() {
                         <img
                           src={service.image}
                           alt={service.name}
-                          className="h-12 w-12 rounded-xl object-cover"
+                          className="h-12 w-12 rounded-xl object-cover bg-white shadow-sm"
+                          onError={(e) => {
+                            e.target.onerror = null;
+                            e.target.src = "https://images.unsplash.com/photo-1562322140-8baeececf3df?w=400&q=80";
+                          }}
                         />
                         <div className="min-w-0 flex-1">
                           <h4 className="truncate font-serif text-xs font-bold">
@@ -833,7 +843,7 @@ export default function BookAppointment() {
             <section>
               <div className="mb-3 flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
                 <h2 className="font-serif text-lg font-bold">
-                  2. Doorstep Address
+                  3. Doorstep Address
                 </h2>
                 <button
                   type="button"
@@ -918,7 +928,7 @@ export default function BookAppointment() {
             {/* Date and time */}
             <section>
               <h2 className="mb-4 font-serif text-lg font-bold">
-                3. Preferred Schedule
+                4. Preferred Schedule
               </h2>
 
               <div className="space-y-5 rounded-3xl border border-[#EADBD2] bg-[#FCF9F6] p-5">
@@ -1032,198 +1042,62 @@ export default function BookAppointment() {
               </div>
             </section>
 
-            {/* Payment options with Animated Saved Cards */}
+            {/* Payment Method */}
             <section>
               <h2 className="mb-4 font-serif text-lg font-bold">
-                4. Payment Method
+                5. Payment Method
               </h2>
 
-              <div className="mb-4 grid gap-3 sm:grid-cols-2">
-                <button
-                  type="button"
-                  onClick={() => setPaymentMethod("upi")}
-                  className={`flex items-center gap-3 rounded-2xl border p-4 text-left transition ${
-                    paymentMethod === "upi"
-                      ? "border-[#C56E4E] bg-[#FFF6F0] ring-2 ring-[#C56E4E]/15"
-                      : "border-[#EADBD2] bg-white hover:border-[#C56E4E]/50"
-                  }`}
-                >
-                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white text-[#C56E4E] shadow-sm">
-                    <Smartphone size={23} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold text-[#2D2623]">UPI Payment</p>
-                    <p className="mt-1 text-xs text-[#8C7A70]">GPay, PhonePe, Paytm, BHIM</p>
-                  </div>
-                  <span
-                    className={`h-4 w-4 rounded-full border shrink-0 ${
-                      paymentMethod === "upi" ? "border-[#C56E4E] bg-[#C56E4E]" : "border-[#D6C5BB]"
-                    }`}
-                  />
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setPaymentMethod("card")}
-                  className={`flex items-center gap-3 rounded-2xl border p-4 text-left transition ${
-                    paymentMethod === "card"
-                      ? "border-[#C56E4E] bg-[#FFF6F0] ring-2 ring-[#C56E4E]/15"
-                      : "border-[#EADBD2] bg-white hover:border-[#C56E4E]/50"
-                  }`}
-                >
-                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#EEF2FF] text-[#4F46E5]">
-                    <CreditCard size={23} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold text-[#2D2623]">Credit / Debit Card</p>
-                    <p className="mt-1 text-xs text-[#8C7A70]">Saved cards & secure gateway</p>
-                  </div>
-                  <span
-                    className={`h-4 w-4 rounded-full border shrink-0 ${
-                      paymentMethod === "card" ? "border-[#C56E4E] bg-[#C56E4E]" : "border-[#D6C5BB]"
-                    }`}
-                  />
-                </button>
-              </div>
-
-              {/* UPI Apps Selection */}
-              {paymentMethod === "upi" && (
-                <motion.div
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="rounded-2xl border border-[#EADBD2] bg-[#FCF9F6] p-4"
-                >
-                  <div className="mb-3 flex items-center gap-2">
-                    <QrCode size={17} className="text-[#C56E4E]" />
-                    <h3 className="text-sm font-bold text-[#2D2623]">Choose your UPI app</h3>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                    {paymentOptions.map((option) => {
-                      const selected = selectedUpiApp === option.id;
-                      return (
-                        <button
-                          key={option.id}
-                          type="button"
-                          onClick={() => {
-                            setPaymentMethod("upi");
-                            setSelectedUpiApp(option.id);
-                          }}
-                          className={`flex flex-col items-center gap-2 rounded-2xl border bg-white p-3 text-center transition ${
-                            selected
-                              ? "border-[#C56E4E] ring-2 ring-[#C56E4E]/15"
-                              : "border-[#EADBD2] hover:border-[#C56E4E]/50"
-                          }`}
-                        >
-                          <PaymentBrand brand={option.brand} />
-                          <span className="text-xs font-bold text-[#2D2623]">{option.label}</span>
-                          <span className={`text-[10px] font-semibold ${selected ? "text-[#C56E4E]" : "text-[#8C7A70]"}`}>
-                            {selected ? "Selected" : "Choose app"}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </motion.div>
-              )}
-
-              {/* SAVED CARDS SECTION WITH ANIMATIONS */}
-              {paymentMethod === "card" && (
-                <motion.div
-                  initial={{ opacity: 0, y: 10, scale: 0.98 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: 10 }}
-                  transition={{ duration: 0.3, type: "spring", stiffness: 120, damping: 18 }}
-                  className="rounded-3xl border border-[#EADBD2] bg-[#FCF9F6] p-5 space-y-4"
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <CreditCard size={18} className="text-[#C56E4E]" />
-                      <h3 className="text-xs font-bold uppercase tracking-wider text-[#2D2623]">
-                        Your Saved Cards
-                      </h3>
-                    </div>
-                    <Link
-                      to="/settings"
-                      className="text-[11px] font-bold text-[#C56E4E] hover:underline"
-                    >
-                      Manage in Settings →
-                    </Link>
-                  </div>
-
-                  {savedCards.length > 0 ? (
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      {savedCards.map((card) => {
-                        const cardId = card._id || card.id;
-                        const isSelected = selectedCardId === cardId;
-                        const maskedNum = card.identifier || card.number || "•••• •••• •••• 4242";
-                        const holderName = card.holder || "Card Holder";
-                        const expiryDate = card.expiry || "MM/YY";
-
-                        return (
-                          <motion.div
-                            key={cardId}
-                            whileHover={{ scale: 1.02 }}
-                            whileTap={{ scale: 0.98 }}
-                            onClick={() => setSelectedCardId(cardId)}
-                            className={`relative cursor-pointer overflow-hidden rounded-2xl border p-4 transition-all shadow-sm ${
-                              isSelected
-                                ? "border-[#C56E4E] bg-gradient-to-br from-[#38251F] via-[#8F4935] to-[#C56E4E] text-white shadow-md ring-2 ring-[#C56E4E]/30"
-                                : "border-[#EADBD2] bg-white text-[#2D2623] hover:border-[#C56E4E]/50"
-                            }`}
-                          >
-                            <div className="flex items-center justify-between mb-3">
-                              <span className={`text-[9px] uppercase tracking-[0.2em] font-semibold ${isSelected ? "text-white/70" : "text-[#8C7A70]"}`}>
-                                BeautyVibe Card
-                              </span>
-                              <CreditCard size={18} className={isSelected ? "text-white" : "text-[#C56E4E]"} />
-                            </div>
-
-                            <p className={`font-mono text-sm tracking-wider mb-3 ${isSelected ? "text-white" : "text-[#2D2623]"}`}>
-                              {maskedNum}
-                            </p>
-
-                            <div className="flex items-end justify-between text-[10px]">
-                              <div>
-                                <span className={isSelected ? "text-white/60" : "text-[#8C7A70]"}>CARDHOLDER</span>
-                                <p className={`font-semibold uppercase truncate max-w-[120px] ${isSelected ? "text-white" : "text-[#2D2623]"}`}>
-                                  {holderName}
-                                </p>
-                              </div>
-                              <div className="text-right">
-                                <span className={isSelected ? "text-white/60" : "text-[#8C7A70]"}>EXPIRES</span>
-                                <p className={`font-mono ${isSelected ? "text-white" : "text-[#2D2623]"}`}>
-                                  {expiryDate}
-                                </p>
-                              </div>
-                            </div>
-
-                            {isSelected && (
-                              <div className="absolute top-2 right-2 flex h-5 w-5 items-center justify-center rounded-full bg-white text-[#C56E4E]">
-                                <Check size={12} strokeWidth={3} />
-                              </div>
-                            )}
-                          </motion.div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <div className="rounded-2xl border border-dashed border-[#DCC8BD] bg-white py-6 text-center">
-                      <CreditCard className="mx-auto mb-2 text-[#C56E4E]" size={24} />
-                      <p className="text-xs font-bold text-[#2D2623]">No saved cards found</p>
-                      <p className="mt-1 text-[10px] text-[#8C7A70]">
-                        Add a secure card in your Settings account page to pay instantly.
+              <div className="space-y-4">
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-800">
+                  <div className="flex items-start gap-2.5">
+                    <Info size={16} className="mt-0.5 shrink-0 text-amber-600" />
+                    <div>
+                      <p className="font-bold">Online Payments Notice</p>
+                      <p className="mt-0.5 leading-relaxed">
+                        UPI & card (online payments) are temporarily unavailable.
+                        Please proceed with <strong>Cash on Delivery (COD)</strong>.
                       </p>
-                      <Link
-                        to="/settings"
-                        className="mt-3 inline-block rounded-full bg-[#C56E4E] px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-white transition hover:bg-[#A35539]"
-                      >
-                        Add Card in Settings
-                      </Link>
                     </div>
-                  )}
-                </motion.div>
-              )}
+                  </div>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2 opacity-60">
+                  <div className="flex items-center gap-3 rounded-2xl border border-[#EADBD2] bg-white p-4 text-left cursor-not-allowed">
+                    <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white text-[#C56E4E] shadow-sm">
+                      <Smartphone size={23} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-[#2D2623]">UPI Payment</p>
+                      <p className="mt-1 text-xs text-[#8C7A70]">Temporarily Unavailable</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3 rounded-2xl border border-[#EADBD2] bg-white p-4 text-left cursor-not-allowed">
+                    <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#EEF2FF] text-[#4F46E5]">
+                      <CreditCard size={23} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-[#2D2623]">Credit / Debit Card</p>
+                      <p className="mt-1 text-xs text-[#8C7A70]">Temporarily Unavailable</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Active COD Option */}
+                <div className="flex items-center gap-3 rounded-2xl border-2 border-[#C56E4E] bg-[#FFF6F0] p-4 text-left shadow-sm">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#C56E4E] text-white shadow-sm">
+                    <Check size={22} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-[#2D2623]">Cash on Delivery (COD)</p>
+                    <p className="mt-1 text-xs text-[#8C7A70]">Pay directly after service completion</p>
+                  </div>
+                  <span className="rounded-full bg-[#C56E4E] px-3 py-1 text-[10px] font-bold text-white uppercase">
+                    Active
+                  </span>
+                </div>
+              </div>
             </section>
           </motion.div>
 
@@ -1249,6 +1123,18 @@ export default function BookAppointment() {
 
               <div className="mb-6 space-y-5">
                 <div>
+                  <span className="mb-1 block text-[9px] font-bold uppercase tracking-widest text-[#A39292]">
+                    Customer Details
+                  </span>
+                  <p className="text-sm font-bold text-white">
+                    {firstName || lastName ? `${firstName} ${lastName}`.trim() : "Guest User"}
+                  </p>
+                  <p className="text-xs text-[#D3C5BF]">
+                    {mobileNumber ? `+91 ${mobileNumber}` : "No mobile provided"}
+                  </p>
+                </div>
+
+                <div className="border-t border-white/10 pt-3">
                   <span className="mb-1 block text-[9px] font-bold uppercase tracking-widest text-[#A39292]">
                     Primary Ritual
                   </span>
@@ -1291,11 +1177,7 @@ export default function BookAppointment() {
                     Payment Preference
                   </span>
                   <p className="text-xs font-semibold text-white">
-                    {paymentMethod === "upi"
-                      ? paymentOptions.find((o) => o.id === selectedUpiApp)?.label || "UPI"
-                      : paymentMethod === "card"
-                      ? `Credit/Debit Card (${savedCards.find(c => (c._id || c.id) === selectedCardId)?.identifier?.slice(-4) || "Selected"})`
-                      : "Pay on Arrival"}
+                    Cash on Delivery (COD)
                   </p>
                 </div>
 
