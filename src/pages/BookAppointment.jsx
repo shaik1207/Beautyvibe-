@@ -445,7 +445,7 @@ export default function BookAppointment() {
         if (!cancelled) {
           setError("Unable to load services. Please refresh the page.");
         }
-      } font-medium finally {
+      } finally {
         if (!cancelled) setLoading(false);
       }
     };
@@ -1569,7 +1569,7 @@ export default function BookAppointment() {
                   </a>
                 </div>
 
-                <div className="flex gap-3">
+                <div className="flex gap-[#EADBD2] gap-3">
                   <button
                     type="button"
                     onClick={() => setIsLocationModalOpen(false)}
@@ -1579,7 +1579,7 @@ export default function BookAppointment() {
                   </button>
                   <a
                     href={`tel:${ADMIN_CONTACT_PHONE}`}
-                    className="flex-1 rounded-full bg-[#2D2623] py-3 text-xs font-bold uppercase tracking-wider text-white hover:bg-black transition text-center"
+                    className="flex-1 rounded-full bg-[#2D2623] py-3 text-xs font-bold uppercase tracking-wider text-white hover:bg-black transition text-center flex items-center justify-center"
                   >
                     Contact Support
                   </a>
