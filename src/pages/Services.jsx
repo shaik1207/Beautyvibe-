@@ -6,6 +6,39 @@ import API from "../services/axios";
 
 const categories = ["All", "Hair", "Skin", "Nails", "Grooming", "Beauty"];
 
+// Sub-component to safely load images with local /primary.png fallback
+const SafeImage = ({ src, alt, className }) => {
+  const localLogoFallback = "/primary.png";
+  const remoteFallback = "https://images.unsplash.com/photo-1560066984-138dadb4c035?w=800&q=80";
+
+  const [imgSrc, setImgSrc] = useState(src || localLogoFallback);
+  const [errorCount, setErrorCount] = useState(0);
+
+  useEffect(() => {
+    setImgSrc(src || localLogoFallback);
+    setErrorCount(0);
+  }, [src]);
+
+  const handleError = () => {
+    if (errorCount === 0) {
+      setImgSrc(localLogoFallback);
+      setErrorCount(1);
+    } else if (errorCount === 1) {
+      setImgSrc(remoteFallback);
+      setErrorCount(2);
+    }
+  };
+
+  return (
+    <img
+      src={imgSrc}
+      alt={alt}
+      className={className}
+      onError={handleError}
+    />
+  );
+};
+
 export default function Services() {
   const [searchParams] = useSearchParams();
   const initialCategory = searchParams.get("category") || "All";
@@ -30,6 +63,12 @@ export default function Services() {
     }
   }, []);
 
+  // Sync state if category param in URL changes
+  useEffect(() => {
+    const cat = searchParams.get("category");
+    if (cat) setSelectedCategory(cat);
+  }, [searchParams]);
+
   // Fetch live services from backend database
   useEffect(() => {
     const fetchServices = async () => {
@@ -37,7 +76,7 @@ export default function Services() {
         setLoading(true);
         setErrorMsg(null);
         const res = await API.get("/api/services");
-        
+
         const responseData = res.data?.data || res.data || [];
         if (Array.isArray(responseData)) {
           setServices(responseData);
@@ -55,25 +94,31 @@ export default function Services() {
     fetchServices();
   }, []);
 
-  // Bulletproof image resolver for admin-uploaded images & absolute URLs
+  // Bulletproof image URL parser for relative, uploads, & CDN links
   const getServiceImageUrl = (service) => {
-    const rawImg = service.image || service.imageUrl || service.photo || service.img;
-    if (!rawImg) {
-      return "https://images.unsplash.com/photo-1522337660859-02fbefca4702?w=800&q=80";
-    }
-    if (rawImg.startsWith("http://") || rawImg.startsWith("https://") || rawImg.startsWith("data:") || rawImg.startsWith("blob:")) {
+    const rawImg = service.image || service.imageUrl || service.photo || service.imgUrl || service.img;
+    if (!rawImg) return null;
+
+    if (
+      rawImg.startsWith("http://") || 
+      rawImg.startsWith("https://") || 
+      rawImg.startsWith("data:") || 
+      rawImg.startsWith("blob:")
+    ) {
       return rawImg;
     }
-    // Prepend backend base URL for relative paths (e.g. /uploads/...)
+
     const baseURL = API.defaults.baseURL ? API.defaults.baseURL.replace(/\/api\/?$/, "") : "";
     const cleanPath = rawImg.startsWith("/") ? rawImg : `/${rawImg}`;
     return baseURL ? `${baseURL}${cleanPath}` : cleanPath;
   };
 
   const filteredServices = services.filter((s) => {
-    const matchesCategory = selectedCategory === "All" || 
+    const matchesCategory =
+      selectedCategory === "All" ||
       (s.category && s.category.toLowerCase() === selectedCategory.toLowerCase());
-    const matchesSearch = (s.title || s.name || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+    const matchesSearch =
+      (s.title || s.name || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
       (s.description || "").toLowerCase().includes(searchQuery.toLowerCase());
     return matchesCategory && matchesSearch;
   });
@@ -84,7 +129,7 @@ export default function Services() {
     let isAdding = true;
 
     if (favorites.includes(sId)) {
-      updatedFavs = favorites.filter(id => id !== sId);
+      updatedFavs = favorites.filter((id) => id !== sId);
       isAdding = false;
     } else {
       updatedFavs = [...favorites, sId];
@@ -94,7 +139,11 @@ export default function Services() {
     localStorage.setItem("beautyvibe_user_favorites", JSON.stringify(updatedFavs));
     window.dispatchEvent(new Event("storage"));
 
-    setToastMsg(isAdding ? `✨ Pinned "${service.title || service.name}" to Favourites!` : `💔 Removed from Favourites`);
+    setToastMsg(
+      isAdding
+        ? `✨ Pinned "${service.title || service.name}" to Favourites!`
+        : `💔 Removed from Favourites`
+    );
     setTimeout(() => setToastMsg(null), 3000);
 
     try {
@@ -103,39 +152,44 @@ export default function Services() {
   };
 
   return (
-    <div className="flex-1 min-w-0 bg-[#FCF9F6] font-sans selection:bg-[#C56E4E] selection:text-white pb-24 text-[#2D2623]">
-      
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-8">
+    <div className="flex-1 min-w-0 bg-[#FCF9F6] font-sans selection:bg-[#C56E4E] selection:text-white pb-24 text-[#2D2623] relative overflow-x-hidden">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-6 sm:pt-8">
         
         {/* Header Banner */}
-        <div className="relative rounded-[2.5rem] bg-[#2D2623] p-8 lg:p-12 text-white overflow-hidden mb-10 shadow-lg">
-          <div className="absolute right-0 top-0 h-full w-1/2 opacity-20 pointer-events-none">
-            <img src="https://images.unsplash.com/photo-1562322140-8baeececf3df?auto=format&fit=crop&w=1000&q=80" alt="Banner" className="w-full h-full object-cover" />
+        <div className="relative rounded-[2rem] sm:rounded-[2.5rem] bg-[#2D2623] p-6 sm:p-10 lg:p-12 text-white overflow-hidden mb-8 sm:mb-10 shadow-lg">
+          <div className="absolute right-0 top-0 h-full w-1/2 opacity-20 pointer-events-none hidden sm:block">
+            <SafeImage
+              src="https://images.unsplash.com/photo-1562322140-8baeececf3df?auto=format&fit=crop&w=1000&q=80"
+              alt="Banner"
+              className="w-full h-full object-cover"
+            />
           </div>
           <div className="relative z-10 max-w-xl">
-            <div className="inline-flex items-center gap-2 rounded-full bg-white/10 px-4 py-1.5 mb-4 backdrop-blur-md">
+            <div className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3.5 py-1 mb-3 sm:mb-4 backdrop-blur-md">
               <Sparkles size={14} className="text-[#E5A024]" />
-              <span className="text-[10px] font-bold uppercase tracking-widest text-[#E5A024]">Explore Catalog</span>
+              <span className="text-[10px] font-bold uppercase tracking-widest text-[#E5A024]">
+                Explore Catalog
+              </span>
             </div>
-            <h1 className="font-serif text-3xl sm:text-4xl lg:text-5xl font-bold mb-4">
+            <h1 className="font-serif text-2xl sm:text-4xl lg:text-5xl font-bold mb-3 sm:mb-4 leading-tight">
               Professional Salon & Spa Rituals
             </h1>
-            <p className="text-xs sm:text-sm text-[#EADBD2]/80 leading-relaxed">
+            <p className="text-xs sm:text-sm text-[#EADBD2]/80 leading-relaxed font-medium">
               Discover our comprehensive menu of salon services delivered by certified experts using premium organic products.
             </p>
           </div>
         </div>
 
         {/* Search & Category Filter Bar */}
-        <div className="flex flex-col md:flex-row items-center justify-between gap-4 mb-10">
+        <div className="flex flex-col md:flex-row items-center justify-between gap-4 mb-8 sm:mb-10">
           <div className="flex overflow-x-auto gap-2 pb-2 w-full md:w-auto scrollbar-hide">
             {categories.map((cat) => (
               <button
                 key={cat}
                 onClick={() => setSelectedCategory(cat)}
-                className={`shrink-0 px-6 py-2.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
+                className={`shrink-0 px-5 sm:px-6 py-2.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
                   selectedCategory.toLowerCase() === cat.toLowerCase()
-                    ? "bg-[#C56E4E] text-white shadow-md"
+                    ? "bg-[#C56E4E] text-white shadow-md border border-[#C56E4E]"
                     : "bg-white border border-[#EADBD2] text-[#8C7A70] hover:border-[#C56E4E] hover:text-[#C56E4E]"
                 }`}
               >
@@ -151,7 +205,7 @@ export default function Services() {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search services..."
-              className="w-full rounded-full border border-[#EADBD2] bg-white py-3 pl-11 pr-4 text-xs font-semibold text-[#2D2623] outline-none focus:border-[#C56E4E] shadow-sm"
+              className="w-full rounded-full border border-[#EADBD2] bg-white py-2.5 sm:py-3 pl-11 pr-4 text-xs font-semibold text-[#2D2623] outline-none focus:border-[#C56E4E] shadow-sm"
             />
           </div>
         </div>
@@ -161,7 +215,7 @@ export default function Services() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {[1, 2, 3, 4, 5, 6].map((n) => (
               <div key={n} className="bg-white rounded-[2rem] border border-[#EADBD2] p-4 animate-pulse">
-                <div className="h-52 w-full rounded-2xl bg-[#EADBD2]/40 mb-4" />
+                <div className="h-48 sm:h-52 w-full rounded-2xl bg-[#EADBD2]/40 mb-4" />
                 <div className="h-5 bg-[#EADBD2]/40 rounded w-3/4 mb-3" />
                 <div className="h-4 bg-[#EADBD2]/30 rounded w-1/2 mb-6" />
                 <div className="h-11 bg-[#EADBD2]/40 rounded-full" />
@@ -169,23 +223,26 @@ export default function Services() {
             ))}
           </div>
         ) : errorMsg ? (
-          <div className="flex flex-col items-center justify-center rounded-[2rem] border border-red-200 bg-white p-12 text-center shadow-sm">
+          <div className="flex flex-col items-center justify-center rounded-[2rem] border border-red-200 bg-white p-8 sm:p-12 text-center shadow-sm">
             <h3 className="font-serif text-xl font-bold mb-2 text-red-600">Connection Error</h3>
-            <p className="text-xs text-[#8C7A70] mb-6">{errorMsg}</p>
+            <p className="text-xs text-[#8C7A70] mb-6 max-w-md">{errorMsg}</p>
             <button
               onClick={() => window.location.reload()}
-              className="rounded-full bg-[#C56E4E] px-6 py-3 text-xs font-bold uppercase tracking-wider text-white shadow-md hover:bg-[#A35539]"
+              className="rounded-full bg-[#C56E4E] px-6 py-3 text-xs font-bold uppercase tracking-wider text-white shadow-md hover:bg-[#A35539] transition-colors"
             >
               Retry Connection
             </button>
           </div>
         ) : filteredServices.length === 0 ? (
-          <div className="flex flex-col items-center justify-center rounded-[2rem] border border-[#EADBD2] bg-white p-12 text-center shadow-sm">
-            <h3 className="font-serif text-2xl font-bold mb-2">No Services Found</h3>
+          <div className="flex flex-col items-center justify-center rounded-[2rem] border border-[#EADBD2] bg-white p-8 sm:p-12 text-center shadow-sm">
+            <h3 className="font-serif text-xl sm:text-2xl font-bold mb-2">No Services Found</h3>
             <p className="text-xs text-[#8C7A70] mb-6">No rituals match your search query or selected category.</p>
             <button
-              onClick={() => { setSelectedCategory("All"); setSearchQuery(""); }}
-              className="rounded-full bg-[#C56E4E] px-6 py-3 text-xs font-bold uppercase tracking-wider text-white shadow-md hover:bg-[#A35539]"
+              onClick={() => {
+                setSelectedCategory("All");
+                setSearchQuery("");
+              }}
+              className="rounded-full bg-[#C56E4E] px-6 py-3 text-xs font-bold uppercase tracking-wider text-white shadow-md hover:bg-[#A35539] transition-colors"
             >
               Reset Filters
             </button>
@@ -195,7 +252,7 @@ export default function Services() {
             <AnimatePresence mode="popLayout">
               {filteredServices.map((service) => {
                 const sId = String(service.id || service._id);
-                const sName = service.title || service.name;
+                const sName = service.title || service.name || "Service Ritual";
                 const sImg = getServiceImageUrl(service);
                 const isFavorited = favorites.includes(sId);
 
@@ -210,13 +267,17 @@ export default function Services() {
                     className="group bg-white rounded-[2rem] border border-[#EADBD2] p-4 shadow-sm hover:shadow-xl hover:border-[#C56E4E]/40 transition-all flex flex-col justify-between"
                   >
                     <div>
-                      <div className="relative h-52 w-full rounded-2xl overflow-hidden mb-4 bg-[#FFF6F0]">
-                        <img src={sImg} alt={sName} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
+                      <div className="relative h-48 sm:h-52 w-full rounded-2xl overflow-hidden mb-4 bg-[#FFF6F0] flex items-center justify-center">
+                        <SafeImage
+                          src={sImg}
+                          alt={sName}
+                          className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                        />
                         <button
                           onClick={() => handleToggleFavourite(service)}
                           className={`absolute top-3 right-3 backdrop-blur-md p-2.5 rounded-full transition-colors shadow-sm cursor-pointer ${
-                            isFavorited 
-                              ? "bg-[#C56E4E] text-white" 
+                            isFavorited
+                              ? "bg-[#C56E4E] text-white"
                               : "bg-white/90 text-[#C56E4E] hover:bg-[#C56E4E] hover:text-white"
                           }`}
                         >
@@ -226,18 +287,28 @@ export default function Services() {
 
                       <div className="px-1">
                         <div className="flex items-center justify-between mb-2">
-                          <span className="text-[10px] font-bold uppercase tracking-widest text-[#C56E4E]">{service.category || "Ritual"}</span>
+                          <span className="text-[10px] font-bold uppercase tracking-widest text-[#C56E4E]">
+                            {service.category || "Ritual"}
+                          </span>
                           <span className="flex items-center gap-1 text-xs font-bold text-[#E5A024]">
                             <Star size={12} className="fill-current" /> {service.rating || "5.0"}
                           </span>
                         </div>
 
-                        <h3 className="font-serif text-xl font-bold text-[#2D2623] leading-tight mb-2">{sName}</h3>
-                        <p className="text-xs font-medium text-[#8C7A70] line-clamp-2 mb-4 leading-relaxed">{service.description}</p>
+                        <h3 className="font-serif text-lg sm:text-xl font-bold text-[#2D2623] leading-tight mb-2 line-clamp-1">
+                          {sName}
+                        </h3>
+                        <p className="text-xs font-medium text-[#8C7A70] line-clamp-2 mb-4 leading-relaxed h-8">
+                          {service.description || "Indulge in a premium salon ritual designed to nourish and revitalize."}
+                        </p>
 
                         <div className="flex items-center justify-between pt-3 border-t border-[#EADBD2]/60 mb-5">
-                          <span className="font-serif text-2xl font-bold text-[#2D2623]">₹{Number(service.price).toLocaleString("en-IN")}</span>
-                          <span className="flex items-center gap-1 text-xs font-medium text-[#8C7A70]"><Clock size={13} /> {service.duration}</span>
+                          <span className="font-serif text-xl sm:text-2xl font-bold text-[#2D2623]">
+                            ₹{Number(service.price || 0).toLocaleString("en-IN")}
+                          </span>
+                          <span className="flex items-center gap-1 text-xs font-medium text-[#8C7A70]">
+                            <Clock size={13} /> {service.duration || "45 mins"}
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -245,13 +316,13 @@ export default function Services() {
                     <div className="flex items-center gap-2">
                       <Link
                         to={`/services/${sId}`}
-                        className="flex-1 py-3.5 rounded-full border border-[#C56E4E] text-[#C56E4E] text-xs font-bold uppercase tracking-wider text-center hover:bg-[#FFF6F0] transition-colors flex items-center justify-center gap-1.5"
+                        className="flex-1 py-3 rounded-full border border-[#C56E4E] text-[#C56E4E] text-xs font-bold uppercase tracking-wider text-center hover:bg-[#FFF6F0] transition-colors flex items-center justify-center gap-1.5"
                       >
                         <Info size={14} /> Details
                       </Link>
                       <Link
                         to={`/book-appointment?service=${sId}`}
-                        className="flex-1 py-3.5 rounded-full bg-[#C56E4E] text-white text-xs font-bold uppercase tracking-wider text-center shadow-md hover:bg-[#A35539] transition-colors flex items-center justify-center gap-1.5"
+                        className="flex-1 py-3 rounded-full bg-[#C56E4E] text-white text-xs font-bold uppercase tracking-wider text-center shadow-md hover:bg-[#A35539] transition-colors flex items-center justify-center gap-1.5"
                       >
                         Book <ArrowRight size={14} />
                       </Link>
@@ -271,13 +342,12 @@ export default function Services() {
             initial={{ opacity: 0, y: 50, scale: 0.9 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 20, scale: 0.9 }}
-            className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[100] flex items-center gap-2 rounded-full bg-[#2D2623]/95 px-6 py-3.5 text-white shadow-2xl backdrop-blur-xl border border-white/20 text-xs font-bold whitespace-nowrap"
+            className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[100] flex items-center gap-2 rounded-full bg-[#2D2623]/95 px-5 sm:px-6 py-3 sm:py-3.5 text-white shadow-2xl backdrop-blur-xl border border-white/20 text-xs font-bold whitespace-nowrap"
           >
             <CheckCircle2 size={16} className="text-[#E5A024]" /> {toastMsg}
           </motion.div>
         )}
       </AnimatePresence>
-
     </div>
   );
 }

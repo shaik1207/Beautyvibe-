@@ -25,6 +25,9 @@ import {
   Info,
   User,
   Phone,
+  ChevronDown,
+  X,
+  Grid,
 } from "lucide-react";
 import { io } from "socket.io-client";
 import API from "../services/axios";
@@ -39,6 +42,13 @@ const availableTimeSlots = [
   "03:00 PM",
   "04:00 PM",
   "05:00 PM",
+];
+
+const countryCodes = [
+  { code: "+91", country: "IN", flag: "🇮🇳" },
+  { code: "+1", country: "US", flag: "🇺🇸" },
+  { code: "+44", country: "UK", flag: "🇬🇧" },
+  { code: "+971", country: "UAE", flag: "🇦🇪" },
 ];
 
 const staggerContainer = {
@@ -104,7 +114,27 @@ const parseSlotToMinutes = (slot) => {
   return hours * 60 + minutes;
 };
 
-// Robust helper function to extract user details from all possible localStorage stores
+// Helper to calculate duration in minutes
+const parseDurationToMinutes = (durationStr) => {
+  if (!durationStr) return 45;
+  const str = String(durationStr).toLowerCase();
+  let totalMinutes = 0;
+
+  const hrMatch = str.match(/(\d+)\s*(?:hr|hour)/);
+  if (hrMatch) totalMinutes += parseInt(hrMatch[1], 10) * 60;
+
+  const minMatch = str.match(/(\d+)\s*(?:min|minute)/);
+  if (minMatch) totalMinutes += parseInt(minMatch[1], 10);
+
+  if (totalMinutes === 0) {
+    const rawNum = parseInt(str.replace(/\D/g, ""), 10);
+    return rawNum || 45;
+  }
+
+  return totalMinutes;
+};
+
+// Helper function to extract user details from localStorage
 const getStoredUserField = (fieldKeys) => {
   const storageKeys = ["beautyvibe_user", "user", "userInfo", "profile", "auth"];
   for (const storageKey of storageKeys) {
@@ -123,7 +153,7 @@ const getStoredUserField = (fieldKeys) => {
   return "";
 };
 
-// Robust helper function to resolve service images properly
+// Helper function to resolve service images properly
 const extractServiceImage = (service) => {
   const rawImg =
     service?.image ||
@@ -132,8 +162,7 @@ const extractServiceImage = (service) => {
     service?.photo ||
     "";
 
-  const fallbackImage =
-    "https://images.unsplash.com/photo-1562322140-8baeececf3df?w=400&q=80";
+  const fallbackImage = "/primary.png";
 
   if (!rawImg || typeof rawImg !== "string" || !rawImg.trim()) {
     return fallbackImage;
@@ -163,8 +192,13 @@ export default function BookAppointment() {
   const [bookedSlots, setBookedSlots] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedServiceIds, setSelectedServiceIds] = useState([]);
+  const [isAllServicesOpen, setIsAllServicesOpen] = useState(false);
+  const [showCheckoutHoverTooltip, setShowCheckoutHoverTooltip] = useState(false);
 
-  // Customer Details State with Universal LocalStorage Hydration
+  // Country Code State
+  const [selectedCountryCode, setSelectedCountryCode] = useState("+91");
+
+  // Customer Details State
   const [firstName, setFirstName] = useState(() => {
     const direct = getStoredUserField(["firstName", "first_name"]);
     if (direct) return direct;
@@ -200,7 +234,7 @@ export default function BookAppointment() {
   const [date, setDate] = useState(() => today);
   const [time, setTime] = useState("");
 
-  // Persist customer updates instantly to localStorage
+  // Persist customer updates to localStorage
   useEffect(() => {
     try {
       const existing = JSON.parse(localStorage.getItem("beautyvibe_user") || "{}");
@@ -213,10 +247,11 @@ export default function BookAppointment() {
         mobile: mobileNumber,
         mobileNumber,
         phoneNumber: mobileNumber,
+        countryCode: selectedCountryCode,
       };
       localStorage.setItem("beautyvibe_user", JSON.stringify(updated));
     } catch {}
-  }, [firstName, lastName, mobileNumber]);
+  }, [firstName, lastName, mobileNumber, selectedCountryCode]);
 
   // Generate real-time next 5 days including today
   const nextFiveDays = useMemo(() => {
@@ -346,7 +381,7 @@ export default function BookAppointment() {
               id: String(service._id || service.id),
               name: service.title || service.name || "Beauty Ritual",
               price: Number(service.price) || 0,
-              duration: service.duration || "45 min",
+              duration: service.duration || "45 mins",
               image: resolvedImage,
             };
           });
@@ -538,7 +573,7 @@ export default function BookAppointment() {
   };
 
   /* =========================================
-     SERVICE & RECOMMENDATION SELECTION
+     SERVICE & DURATION CALCULATIONS
   ========================================= */
   const primarySelectedId = selectedServiceIds[0] || allServices[0]?.id || "";
 
@@ -548,8 +583,8 @@ export default function BookAppointment() {
         id: "",
         name: "Select Ritual",
         price: 0,
-        duration: "45 min",
-        image: "https://images.unsplash.com/photo-1562322140-8baeececf3df?w=400&q=80",
+        duration: "45 mins",
+        image: "/primary.png",
       },
     [allServices, primarySelectedId]
   );
@@ -559,9 +594,12 @@ export default function BookAppointment() {
     additionalSelectedIds.includes(service.id)
   );
 
-  const recommendedServices = allServices.filter(
-    (service) => service.id !== primaryService.id
-  );
+  // CURATED 2 TO 3 RECOMMENDATIONS ONLY FOR THE MAIN PAGE
+  const recommendedServices = useMemo(() => {
+    return allServices
+      .filter((service) => !selectedServiceIds.includes(service.id))
+      .slice(0, 3);
+  }, [allServices, selectedServiceIds]);
 
   const totalCalculatedPrice =
     (Number(primaryService.price) || 0) +
@@ -569,6 +607,16 @@ export default function BookAppointment() {
       (sum, service) => sum + (Number(service.price) || 0),
       0
     );
+
+  // Total Duration Calculation in Minutes
+  const totalDurationMinutes = useMemo(() => {
+    const primaryMin = parseDurationToMinutes(primaryService.duration);
+    const addOnsMin = additionalSelectedServices.reduce(
+      (sum, service) => sum + parseDurationToMinutes(service.duration),
+      0
+    );
+    return primaryMin + addOnsMin;
+  }, [primaryService, additionalSelectedServices]);
 
   const toggleRecommendedService = (id) => {
     const stringId = String(id);
@@ -586,7 +634,7 @@ export default function BookAppointment() {
   };
 
   /* =========================================
-     CHECKOUT HANDLER
+     CHECKOUT HANDLER WITH 1-HR & GUNTUR VALIDATION
   ========================================= */
   const handleProceedToCheckout = async (event) => {
     event.preventDefault();
@@ -610,6 +658,12 @@ export default function BookAppointment() {
 
     if (!primaryService.id || totalCalculatedPrice <= 0) {
       setError("Please select a valid service with a valid price.");
+      return;
+    }
+
+    // MINIMUM 1 HOUR (60 MINS) SERVICE VALIDATION
+    if (totalDurationMinutes < 60) {
+      setError(`Minimum appointment duration for doorstep service is 1 Hour (60 mins). Current total: ${totalDurationMinutes} mins. Please add another ritual.`);
       return;
     }
 
@@ -637,28 +691,36 @@ export default function BookAppointment() {
 
     try {
       const fullCustomerName = `${firstName.trim()} ${lastName.trim()}`.trim();
+      
       const bookingDraft = {
         firstName: firstName.trim(),
         lastName: lastName.trim(),
         customerName: fullCustomerName,
         name: fullCustomerName,
-        mobileNumber: cleanPhone,
-        phone: cleanPhone,
-        phoneNumber: cleanPhone,
-        phone_number: cleanPhone,
+        fullName: fullCustomerName,
+        mobileNumber: `${selectedCountryCode}${cleanPhone}`,
+        phone: `${selectedCountryCode}${cleanPhone}`,
+        phoneNumber: `${selectedCountryCode}${cleanPhone}`,
+        phone_number: `${selectedCountryCode}${cleanPhone}`,
         number: cleanPhone,
+        countryCode: selectedCountryCode,
+        contact: `${selectedCountryCode}${cleanPhone}`,
         serviceId: primaryService.id,
         serviceName: primaryService.name,
         additionalServices: additionalSelectedServices.map((service) => service.name),
         additionalServiceIds: additionalSelectedServices.map((service) => service.id),
         price: totalCalculatedPrice,
         amount: totalCalculatedPrice,
+        durationMinutes: totalDurationMinutes,
         date,
         time,
         type: "HOME",
+        isHomeService: true,
         address: address.trim(),
         doorstepAddress: address.trim(),
-        paymentMethod: "cod", // Enforced COD
+        serviceAddress: address.trim(),
+        customerAddress: address.trim(),
+        paymentMethod: "cod",
         location: locationCoordinates,
         image: primaryService.image,
       };
@@ -742,13 +804,32 @@ export default function BookAppointment() {
           </div>
         </motion.div>
 
+        {/* Location Notice Banner */}
+        <motion.div
+          variants={fadeUp}
+          className="mb-8 flex items-center gap-3 rounded-2xl border border-[#C56E4E]/30 bg-[#FFF6F0] p-4 text-xs shadow-sm"
+        >
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#C56E4E] text-white">
+            <MapPin size={20} />
+          </div>
+          <div>
+            <p className="font-bold text-[#2D2623] flex items-center gap-2">
+              Service Location Radius Notice
+              <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+            </p>
+            <p className="mt-0.5 font-medium text-[#8C7A70]">
+              Doorstep appointments are currently accepted exclusively in <strong className="text-[#C56E4E]">Guntur and within a 20 km radius</strong>.
+            </p>
+          </div>
+        </motion.div>
+
         <form onSubmit={handleProceedToCheckout} className="grid items-start gap-8 lg:grid-cols-12">
           {/* LEFT PANEL */}
           <motion.div
             variants={fadeUp}
             className="space-y-8 rounded-[2.5rem] border border-[#EADBD2] bg-white p-6 shadow-sm sm:p-8 lg:col-span-7"
           >
-            {/* Customer Information */}
+            {/* Customer Information with Country Code Drawer */}
             <section>
               <h2 className="mb-4 font-serif text-lg font-bold flex items-center justify-between">
                 <span>1. Customer Details</span>
@@ -793,21 +874,39 @@ export default function BookAppointment() {
                 </div>
               </div>
 
+              {/* Mobile Number with Country Code */}
               <div className="mt-4">
                 <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-[#8C7A70]">
                   Mobile Number
                 </label>
-                <div className="relative">
-                  <Phone size={16} className="absolute left-4 top-3.5 text-[#8C7A70]" />
-                  <input
-                    type="tel"
-                    value={mobileNumber}
-                    onChange={(e) => setMobileNumber(e.target.value)}
-                    placeholder="10-digit mobile number"
-                    maxLength={10}
-                    className="w-full rounded-2xl border border-[#EADBD2] bg-[#FCF9F6] p-3 pl-11 text-sm font-medium text-[#2D2623] outline-none transition focus:border-[#C56E4E] focus:ring-2 focus:ring-[#C56E4E]/10"
-                    required
-                  />
+                <div className="flex gap-2">
+                  <div className="relative">
+                    <select
+                      value={selectedCountryCode}
+                      onChange={(e) => setSelectedCountryCode(e.target.value)}
+                      className="h-full appearance-none rounded-2xl border border-[#EADBD2] bg-[#FCF9F6] px-4 py-3 pr-8 text-sm font-bold text-[#2D2623] outline-none transition focus:border-[#C56E4E]"
+                    >
+                      {countryCodes.map((c) => (
+                        <option key={c.code} value={c.code}>
+                          {c.flag} {c.code}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown size={14} className="pointer-events-none absolute right-3 top-4 text-[#8C7A70]" />
+                  </div>
+
+                  <div className="relative flex-1">
+                    <Phone size={16} className="absolute left-4 top-3.5 text-[#8C7A70]" />
+                    <input
+                      type="tel"
+                      value={mobileNumber}
+                      onChange={(e) => setMobileNumber(e.target.value.replace(/\D/g, ""))}
+                      placeholder="10-digit mobile number"
+                      maxLength={10}
+                      className="w-full rounded-2xl border border-[#EADBD2] bg-[#FCF9F6] p-3 pl-11 text-sm font-medium text-[#2D2623] outline-none transition focus:border-[#C56E4E] focus:ring-2 focus:ring-[#C56E4E]/10"
+                      required
+                    />
+                  </div>
                 </div>
               </div>
             </section>
@@ -816,9 +915,15 @@ export default function BookAppointment() {
             <section>
               <h2 className="mb-4 flex items-center justify-between font-serif text-lg font-bold">
                 <span>2. Selected Ritual</span>
-                <span className="rounded-full border border-[#EADBD2] bg-[#FFF6F0] px-3 py-1 text-xs font-bold text-[#C56E4E]">
-                  Primary Service
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className={`rounded-full px-3 py-1 text-[10px] font-bold uppercase border ${
+                    totalDurationMinutes >= 60
+                      ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+                      : "border-amber-300 bg-amber-50 text-amber-700"
+                  }`}>
+                    {totalDurationMinutes} Mins Total {totalDurationMinutes < 60 && "(Min 60 Required)"}
+                  </span>
+                </div>
               </h2>
 
               <div className="flex items-center gap-4 rounded-[2rem] border-2 border-[#C56E4E] bg-[#FFF6F0]/50 p-4 shadow-md">
@@ -828,7 +933,7 @@ export default function BookAppointment() {
                   className="h-16 w-16 rounded-2xl object-cover bg-white shadow-sm"
                   onError={(e) => {
                     e.target.onerror = null;
-                    e.target.src = "https://images.unsplash.com/photo-1562322140-8baeececf3df?w=400&q=80";
+                    e.target.src = "/primary.png";
                   }}
                 />
                 <div className="flex-1 min-w-0">
@@ -836,7 +941,7 @@ export default function BookAppointment() {
                     {primaryService.name}
                   </h3>
                   <p className="mt-1 text-xs text-[#8C7A70]">
-                    <Clock size={12} className="mr-1 inline" />
+                    <Clock size={12} className="mr-1 inline text-[#C56E4E]" />
                     {primaryService.duration}
                   </p>
                 </div>
@@ -852,7 +957,7 @@ export default function BookAppointment() {
                       key={service.id}
                       className="flex items-center justify-between rounded-2xl border border-[#EADBD2] bg-[#FCF9F6] p-3 text-xs font-bold text-[#5C4841]"
                     >
-                      <span className="truncate pr-2">+ {service.name}</span>
+                      <span className="truncate pr-2">+ {service.name} ({service.duration})</span>
                       <div className="flex items-center gap-3 shrink-0">
                         <span className="font-serif text-sm text-[#2D2623]">
                           ₹{service.price}
@@ -860,7 +965,7 @@ export default function BookAppointment() {
                         <button
                           type="button"
                           onClick={(e) => removeAdditionalService(service.id, e)}
-                          className="rounded-lg p-1 text-rose-500 hover:bg-rose-50"
+                          className="rounded-lg p-1 text-rose-500 hover:bg-rose-50 cursor-pointer"
                         >
                           <Trash2 size={14} />
                         </button>
@@ -871,12 +976,23 @@ export default function BookAppointment() {
               )}
             </section>
 
-            {/* Recommended Add-on Rituals */}
+            {/* Recommended Add-on Rituals with VIEW MORE drawer button */}
             {recommendedServices.length > 0 && (
               <section>
-                <h2 className="mb-3 font-serif text-sm font-bold uppercase tracking-wider text-[#8C7A70]">
-                  Recommended Add-on Rituals
-                </h2>
+                <div className="mb-3 flex items-center justify-between">
+                  <h2 className="font-serif text-sm font-bold uppercase tracking-wider text-[#8C7A70]">
+                    Recommended Add-on Rituals
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={() => setIsAllServicesOpen(true)}
+                    className="flex items-center gap-1.5 text-xs font-bold text-[#C56E4E] hover:underline"
+                  >
+                    <Grid size={13} />
+                    View More Services
+                  </button>
+                </div>
+
                 <div className="grid gap-3 sm:grid-cols-2">
                   {recommendedServices.map((service) => {
                     const isAdded = selectedServiceIds.includes(service.id);
@@ -898,16 +1014,21 @@ export default function BookAppointment() {
                           className="h-12 w-12 rounded-xl object-cover bg-white shadow-sm"
                           onError={(e) => {
                             e.target.onerror = null;
-                            e.target.src = "https://images.unsplash.com/photo-1562322140-8baeececf3df?w=400&q=80";
+                            e.target.src = "/primary.png";
                           }}
                         />
                         <div className="min-w-0 flex-1">
                           <h4 className="truncate font-serif text-xs font-bold">
                             {service.name}
                           </h4>
-                          <span className="font-serif text-xs font-bold text-[#C56E4E]">
-                            ₹{service.price}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="font-serif text-xs font-bold text-[#C56E4E]">
+                              ₹{service.price}
+                            </span>
+                            <span className="text-[10px] text-[#8C7A70]">
+                              · {service.duration}
+                            </span>
+                          </div>
                         </div>
                         <div
                           className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition ${
@@ -928,9 +1049,12 @@ export default function BookAppointment() {
             {/* Doorstep Address */}
             <section>
               <div className="mb-3 flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
-                <h2 className="font-serif text-lg font-bold">
-                  3. Doorstep Address
-                </h2>
+                <div>
+                  <h2 className="font-serif text-lg font-bold">
+                    3. Doorstep Address
+                  </h2>
+                  <p className="text-[11px] text-[#8C7A70]">Must be within Guntur & 20 km radius</p>
+                </div>
                 <button
                   type="button"
                   onClick={handleDetectLocation}
@@ -992,7 +1116,7 @@ export default function BookAppointment() {
                   rows={4}
                   value={address}
                   onChange={handleAddressChange}
-                  placeholder="Enter house / flat number, street, area, city, state and nearby landmark..."
+                  placeholder="Enter house / flat number, street, area in Guntur, state and nearby landmark..."
                   className="w-full resize-y rounded-2xl border border-[#EADBD2] bg-[#FCF9F6] p-4 pl-11 text-sm font-medium text-[#2D2623] outline-none transition focus:border-[#C56E4E] focus:ring-2 focus:ring-[#C56E4E]/10"
                   required
                 />
@@ -1216,7 +1340,7 @@ export default function BookAppointment() {
                     {firstName || lastName ? `${firstName} ${lastName}`.trim() : "Guest User"}
                   </p>
                   <p className="text-xs text-[#D3C5BF]">
-                    {mobileNumber ? `+91 ${mobileNumber}` : "No mobile provided"}
+                    {mobileNumber ? `${selectedCountryCode} ${mobileNumber}` : "No mobile provided"}
                   </p>
                 </div>
 
@@ -1227,6 +1351,12 @@ export default function BookAppointment() {
                   <h3 className="font-serif text-xl font-bold">
                     {primaryService.name}
                   </h3>
+                  <div className="mt-1 flex items-center gap-2 text-xs text-[#D3C5BF]">
+                    <span>Total Duration: <strong className="text-white">{totalDurationMinutes} mins</strong></span>
+                    {totalDurationMinutes < 60 && (
+                      <span className="text-[#E5A024] text-[10px] font-bold">· Needs Min 60 Mins</span>
+                    )}
+                  </div>
                   {additionalSelectedServices.length > 0 && (
                     <p className="mt-1 text-[11px] text-[#E5A024]">
                       + {additionalSelectedServices.length} add-on ritual(s) added
@@ -1251,10 +1381,10 @@ export default function BookAppointment() {
 
                 <div className="border-t border-white/10 pt-3">
                   <span className="mb-1 block text-[9px] uppercase tracking-wider text-[#A39292]">
-                    Home Address
+                    Home Address (Guntur / 20km Radius)
                   </span>
                   <p className="line-clamp-3 break-words text-xs text-white/90">
-                    {address || "Enter your address or detect your location."}
+                    {address || "Enter your address in Guntur or detect location."}
                   </p>
                 </div>
 
@@ -1281,8 +1411,8 @@ export default function BookAppointment() {
               </div>
             </div>
 
-            {/* Error & Submit */}
-            <div className="rounded-[2.5rem] border border-[#EADBD2] bg-white p-6 shadow-sm">
+            {/* Error & Submit Button with Block Hover Tooltip */}
+            <div className="rounded-[2.5rem] border border-[#EADBD2] bg-white p-6 shadow-sm relative">
               <AnimatePresence>
                 {error && (
                   <motion.div
@@ -1297,23 +1427,43 @@ export default function BookAppointment() {
                 )}
               </AnimatePresence>
 
-              <button
-                type="submit"
-                disabled={submitting || !primaryService.id}
-                className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-full bg-[#C56E4E] py-4 text-xs font-bold uppercase tracking-wider text-white shadow-xl transition-all hover:-translate-y-0.5 hover:bg-[#A35539] disabled:cursor-not-allowed disabled:opacity-50"
+              <div
+                className="relative"
+                onMouseEnter={() => totalDurationMinutes < 60 && setShowCheckoutHoverTooltip(true)}
+                onMouseLeave={() => setShowCheckoutHoverTooltip(false)}
               >
-                {submitting ? (
-                  <>
-                    <RefreshCw size={16} className="animate-spin" />
-                    Preparing checkout...
-                  </>
-                ) : (
-                  <>
-                    Continue to Checkout
-                    <ArrowRight size={16} />
-                  </>
-                )}
-              </button>
+                <AnimatePresence>
+                  {showCheckoutHoverTooltip && totalDurationMinutes < 60 && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                      animate={{ opacity: 1, y: -45, scale: 1 }}
+                      exit={{ opacity: 0, y: 5, scale: 0.95 }}
+                      className="absolute -top-3 left-1/2 -translate-x-1/2 z-20 w-full max-w-xs rounded-xl bg-[#2D2623] px-3.5 py-2 text-center text-xs font-bold text-white shadow-xl pointer-events-none border border-white/10"
+                    >
+                      ⚠️ Minimum 1 Hour (60 mins) of services required to proceed. Please select add-on rituals!
+                      <div className="absolute left-1/2 -bottom-1 -translate-x-1/2 border-x-4 border-x-transparent border-t-4 border-t-[#2D2623]" />
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                <button
+                  type="submit"
+                  disabled={submitting || !primaryService.id || totalDurationMinutes < 60}
+                  className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-full bg-[#C56E4E] py-4 text-xs font-bold uppercase tracking-wider text-white shadow-xl transition-all hover:-translate-y-0.5 hover:bg-[#A35539] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {submitting ? (
+                    <>
+                      <RefreshCw size={16} className="animate-spin" />
+                      Preparing checkout...
+                    </>
+                  ) : (
+                    <>
+                      Continue to Checkout
+                      <ArrowRight size={16} />
+                    </>
+                  )}
+                </button>
+              </div>
 
               <p className="mt-4 text-center text-[11px] font-medium text-[#8C7A70]">
                 Need help?{" "}
@@ -1324,6 +1474,124 @@ export default function BookAppointment() {
             </div>
           </motion.aside>
         </form>
+
+        {/* ALL SERVICES DRAWER / MODAL */}
+        <AnimatePresence>
+          {isAllServicesOpen && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm sm:p-6"
+            >
+              <motion.div
+                initial={{ scale: 0.95, opacity: 0, y: 20 }}
+                animate={{ scale: 1, opacity: 1, y: 0 }}
+                exit={{ scale: 0.95, opacity: 0, y: 20 }}
+                className="relative flex max-h-[85vh] w-full max-w-2xl flex-col rounded-[2.5rem] bg-white p-6 shadow-2xl sm:p-8"
+              >
+                <div className="mb-4 flex items-center justify-between border-b border-[#EADBD2] pb-4">
+                  <div>
+                    <h3 className="font-serif text-xl font-bold text-[#2D2623]">
+                      Add-on Beauty Rituals
+                    </h3>
+                    <p className="text-xs text-[#8C7A70]">
+                      Select extra rituals to reach your 1-hour minimum appointment duration.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsAllServicesOpen(false)}
+                    className="rounded-full bg-[#FCF9F6] p-2 text-[#8C7A70] hover:bg-[#FFF6F0] hover:text-[#C56E4E]"
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
+
+                <div className="flex-1 overflow-y-auto space-y-3 pr-1">
+                  {allServices.map((service) => {
+                    const isSelected = selectedServiceIds.includes(service.id);
+                    const isPrimary = selectedServiceIds[0] === service.id;
+
+                    return (
+                      <div
+                        key={service.id}
+                        className={`flex items-center justify-between rounded-2xl border p-3.5 transition-all ${
+                          isSelected
+                            ? "border-[#C56E4E] bg-[#FFF6F0]"
+                            : "border-[#EADBD2] bg-[#FCF9F6] hover:border-[#C56E4E]/50"
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <img
+                            src={service.image}
+                            alt={service.name}
+                            className="h-12 w-12 rounded-xl object-cover bg-white shadow-sm"
+                            onError={(e) => {
+                              e.target.onerror = null;
+                              e.target.src = "/primary.png";
+                            }}
+                          />
+                          <div>
+                            <h4 className="font-serif text-sm font-bold text-[#2D2623]">
+                              {service.name}
+                            </h4>
+                            <p className="text-xs text-[#8C7A70]">
+                              <Clock size={12} className="inline mr-1 text-[#C56E4E]" />
+                              {service.duration} · ₹{service.price}
+                            </p>
+                          </div>
+                        </div>
+
+                        {isPrimary ? (
+                          <span className="rounded-full bg-[#C56E4E] px-3 py-1 text-[10px] font-bold uppercase text-white">
+                            Primary Ritual
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => toggleRecommendedService(service.id)}
+                            className={`flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-bold transition ${
+                              isSelected
+                                ? "bg-rose-500 text-white"
+                                : "bg-[#C56E4E] text-white hover:bg-[#A35539]"
+                            }`}
+                          >
+                            {isSelected ? (
+                              <>
+                                <Trash2 size={13} /> Remove
+                              </>
+                            ) : (
+                              <>
+                                <Plus size={13} /> Add Ritual
+                              </>
+                            )}
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="mt-4 border-t border-[#EADBD2] pt-4 flex items-center justify-between">
+                  <div>
+                    <span className="text-xs text-[#8C7A70]">Total Selected Duration</span>
+                    <p className="font-serif text-lg font-bold text-[#C56E4E]">
+                      {totalDurationMinutes} mins
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsAllServicesOpen(false)}
+                    className="rounded-full bg-[#C56E4E] px-6 py-2.5 text-xs font-bold uppercase text-white shadow-md hover:bg-[#A35539]"
+                  >
+                    Done Selecting
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </motion.main>
     </div>
   );

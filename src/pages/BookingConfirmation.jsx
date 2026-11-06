@@ -27,6 +27,16 @@ const fadeUp = {
   show: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 65, damping: 20 } }
 };
 
+// Helper to filter out email strings and placeholder text from names
+const cleanNameString = (val) => {
+  if (!val || typeof val !== "string") return "";
+  const trimmed = val.trim();
+  const lower = trimmed.toLowerCase();
+  if (/^(null|undefined|n\/a|na|valued client)$/.test(lower)) return "";
+  if (trimmed.includes("@") && trimmed.includes(".")) return "";
+  return trimmed;
+};
+
 export default function BookingConfirmation() {
   const navigate = useNavigate();
   const [booking, setBooking] = useState(null);
@@ -35,12 +45,13 @@ export default function BookingConfirmation() {
     const lastConfirmed = sessionStorage.getItem("beautyvibe_last_confirmed");
     if (lastConfirmed) {
       try {
-        setBooking(JSON.parse(lastConfirmed));
+        const parsed = JSON.parse(lastConfirmed);
+        setBooking(parsed);
       } catch (e) {
         console.error("Error parsing confirmation data:", e);
       }
     } else {
-      // Fallback default state for preview / demonstration with customer details included
+      // Fallback default state for preview / demonstration
       setBooking({
         id: "QBBRWULJAU",
         passCode: "BV-8492026",
@@ -68,6 +79,20 @@ export default function BookingConfirmation() {
       </div>
     );
   }
+
+  // Calculate clean unified amount for single or time-based services
+  const rawAmount = booking.amount ?? booking.totalAmount ?? booking.price ?? 2499;
+  const finalAmount = Number(rawAmount) || 0;
+
+  // Resolve clean client name, avoiding email leakages
+  const resolvedCustomerName = 
+    cleanNameString(booking.customerName) || 
+    cleanNameString(booking.name) || 
+    cleanNameString(booking.userName) || 
+    "Valued Client";
+
+  const resolvedPhone = booking.customerPhone || booking.phone || booking.mobileNumber || "";
+  const resolvedEmail = booking.customerEmail || booking.email || "";
 
   // The unique string that the admin scanner will read and verify
   const passCodeStr = booking.passCode || booking.id || "BV-8492026";
@@ -165,10 +190,10 @@ export default function BookingConfirmation() {
                 </div>
               </div>
 
-              {/* Service Price Badge */}
+              {/* Unified Service Price Badge */}
               <div className="shrink-0 text-right">
                 <span className="text-[10px] uppercase tracking-wider text-[#8C7A70] font-bold block mb-1">Total</span>
-                <span className="font-serif text-lg font-bold text-[#C56E4E]">₹{Number(booking.amount || 0).toLocaleString("en-IN")}</span>
+                <span className="font-serif text-lg font-bold text-[#C56E4E]">₹{finalAmount.toLocaleString("en-IN")}</span>
               </div>
             </div>
 
@@ -178,20 +203,20 @@ export default function BookingConfirmation() {
               
               <div className="flex items-center gap-2.5 text-xs text-white/90">
                 <User size={14} className="text-[#C56E4E] shrink-0" />
-                <span className="font-semibold">{booking.customerName || booking.name || "Valued Client"}</span>
+                <span className="font-semibold">{resolvedCustomerName}</span>
               </div>
 
-              {(booking.customerPhone || booking.phone) && (
+              {resolvedPhone && (
                 <div className="flex items-center gap-2.5 text-xs text-white/90">
                   <Phone size={14} className="text-[#C56E4E] shrink-0" />
-                  <span>{booking.customerPhone || booking.phone}</span>
+                  <span>{resolvedPhone}</span>
                 </div>
               )}
 
-              {(booking.customerEmail || booking.email) && (
+              {resolvedEmail && (
                 <div className="flex items-center gap-2.5 text-xs text-white/90">
                   <Mail size={14} className="text-[#C56E4E] shrink-0" />
-                  <span className="truncate">{booking.customerEmail || booking.email}</span>
+                  <span className="truncate">{resolvedEmail}</span>
                 </div>
               )}
             </div>
@@ -207,7 +232,7 @@ export default function BookingConfirmation() {
               <div className="flex items-center gap-3">
                 <Clock size={16} className="text-[#C56E4E]" />
                 <span className="text-xs font-semibold text-white/90">
-                  {booking.time} <span className="text-white/40 font-normal">(approx)</span>
+                  {booking.time} <span className="text-white/40 font-normal">(Slot)</span>
                 </span>
               </div>
               <div className="flex items-start gap-3 pt-3 border-t border-white/10">
@@ -240,6 +265,7 @@ export default function BookingConfirmation() {
             </Link>
              
             <button
+              type="button"
               onClick={() => {
                 if (navigator.share) {
                   navigator.share({
