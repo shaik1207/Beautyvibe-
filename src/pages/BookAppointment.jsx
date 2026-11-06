@@ -104,6 +104,37 @@ const parseSlotToMinutes = (slot) => {
   return hours * 60 + minutes;
 };
 
+// Robust helper function to resolve service images properly
+const extractServiceImage = (service) => {
+  const rawImg =
+    service?.image ||
+    service?.imageUrl ||
+    service?.img ||
+    service?.photo ||
+    "";
+
+  const fallbackImage =
+    "https://images.unsplash.com/photo-1562322140-8baeececf3df?w=400&q=80";
+
+  if (!rawImg || typeof rawImg !== "string" || !rawImg.trim()) {
+    return fallbackImage;
+  }
+
+  const trimmed = rawImg.trim();
+  if (
+    trimmed.startsWith("http://") ||
+    trimmed.startsWith("https://") ||
+    trimmed.startsWith("data:") ||
+    trimmed.startsWith("blob:")
+  ) {
+    return trimmed;
+  }
+
+  const apiBase =
+    import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
+  return `${apiBase.replace(/\/$/, "")}/${trimmed.replace(/^\//, "")}`;
+};
+
 export default function BookAppointment() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
@@ -242,29 +273,7 @@ export default function BookAppointment() {
 
         if (Array.isArray(rawServices)) {
           const formatted = rawServices.map((service) => {
-            const rawImg =
-              service.image ||
-              service.imageUrl ||
-              service.img ||
-              service.photo ||
-              "";
-
-            let resolvedImage =
-              "https://images.unsplash.com/photo-1562322140-8baeececf3df?w=400&q=80";
-
-            if (typeof rawImg === "string" && rawImg.trim()) {
-              if (
-                rawImg.startsWith("http://") ||
-                rawImg.startsWith("https://") ||
-                rawImg.startsWith("data:")
-              ) {
-                resolvedImage = rawImg;
-              } else {
-                const apiBase =
-                  import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
-                resolvedImage = `${apiBase.replace(/\/$/, "")}/${rawImg.replace(/^\//, "")}`;
-              }
-            }
+            const resolvedImage = extractServiceImage(service);
 
             return {
               id: String(service._id || service.id),
