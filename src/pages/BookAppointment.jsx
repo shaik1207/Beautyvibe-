@@ -104,6 +104,25 @@ const parseSlotToMinutes = (slot) => {
   return hours * 60 + minutes;
 };
 
+// Robust helper function to extract user details from all possible localStorage stores
+const getStoredUserField = (fieldKeys) => {
+  const storageKeys = ["beautyvibe_user", "user", "userInfo", "profile", "auth"];
+  for (const storageKey of storageKeys) {
+    try {
+      const raw = localStorage.getItem(storageKey);
+      if (!raw) continue;
+      const parsed = JSON.parse(raw);
+      const targetObj = parsed.user || parsed.data || parsed;
+      if (!targetObj || typeof targetObj !== "object") continue;
+
+      for (const key of fieldKeys) {
+        if (targetObj[key]) return String(targetObj[key]).trim();
+      }
+    } catch {}
+  }
+  return "";
+};
+
 // Robust helper function to resolve service images properly
 const extractServiceImage = (service) => {
   const rawImg =
@@ -145,51 +164,59 @@ export default function BookAppointment() {
   const [loading, setLoading] = useState(true);
   const [selectedServiceIds, setSelectedServiceIds] = useState([]);
 
-  // Customer Details State with LocalStorage Hydration Fallback
+  // Customer Details State with Universal LocalStorage Hydration
   const [firstName, setFirstName] = useState(() => {
-    try {
-      const localUser = JSON.parse(localStorage.getItem("beautyvibe_user") || "{}");
-      if (localUser.firstName) return localUser.firstName;
-      if (localUser.name) {
-        return localUser.name.trim().split(" ")[0] || "";
-      }
-    } catch {}
-    return "";
+    const direct = getStoredUserField(["firstName", "first_name"]);
+    if (direct) return direct;
+    const fullName = getStoredUserField(["name", "fullName", "full_name"]);
+    return fullName ? fullName.split(" ")[0] : "";
   });
 
   const [lastName, setLastName] = useState(() => {
-    try {
-      const localUser = JSON.parse(localStorage.getItem("beautyvibe_user") || "{}");
-      if (localUser.lastName) return localUser.lastName;
-      if (localUser.name) {
-        const parts = localUser.name.trim().split(" ");
-        return parts.slice(1).join(" ") || "";
-      }
-    } catch {}
+    const direct = getStoredUserField(["lastName", "last_name"]);
+    if (direct) return direct;
+    const fullName = getStoredUserField(["name", "fullName", "full_name"]);
+    if (fullName) {
+      const parts = fullName.split(" ");
+      return parts.slice(1).join(" ");
+    }
     return "";
   });
 
   const [mobileNumber, setMobileNumber] = useState(() => {
-    try {
-      const localUser = JSON.parse(localStorage.getItem("beautyvibe_user") || "{}");
-      return (
-        localUser.phone ||
-        localUser.mobile ||
-        localUser.phoneNumber ||
-        localUser.mobileNumber ||
-        localUser.phone_number ||
-        localUser.number ||
-        localUser.contact ||
-        ""
-      );
-    } catch {}
-    return "";
+    return getStoredUserField([
+      "phone",
+      "mobile",
+      "phoneNumber",
+      "mobileNumber",
+      "phone_number",
+      "number",
+      "contact",
+    ]);
   });
 
   const [liveNow, setLiveNow] = useState(() => new Date());
   const today = formatLocalDate(liveNow);
   const [date, setDate] = useState(() => today);
   const [time, setTime] = useState("");
+
+  // Persist customer updates instantly to localStorage
+  useEffect(() => {
+    try {
+      const existing = JSON.parse(localStorage.getItem("beautyvibe_user") || "{}");
+      const updated = {
+        ...existing,
+        firstName,
+        lastName,
+        name: `${firstName} ${lastName}`.trim(),
+        phone: mobileNumber,
+        mobile: mobileNumber,
+        mobileNumber,
+        phoneNumber: mobileNumber,
+      };
+      localStorage.setItem("beautyvibe_user", JSON.stringify(updated));
+    } catch {}
+  }, [firstName, lastName, mobileNumber]);
 
   // Generate real-time next 5 days including today
   const nextFiveDays = useMemo(() => {
@@ -266,8 +293,8 @@ export default function BookAppointment() {
         if (profileRes.status === "fulfilled") {
           const userData = profileRes.value.data?.data || profileRes.value.data?.user || profileRes.value.data;
           if (userData) {
-            const resolvedFName = userData.firstName || (userData.name ? userData.name.trim().split(" ")[0] : "");
-            const resolvedLName = userData.lastName || (userData.name ? userData.name.trim().split(" ").slice(1).join(" ") : "");
+            const resolvedFName = userData.firstName || userData.first_name || (userData.name ? userData.name.trim().split(" ")[0] : "");
+            const resolvedLName = userData.lastName || userData.last_name || (userData.name ? userData.name.trim().split(" ").slice(1).join(" ") : "");
             const resolvedPhone =
               userData.phone ||
               userData.mobile ||
@@ -575,7 +602,8 @@ export default function BookAppointment() {
       return;
     }
 
-    if (!mobileNumber.trim() || !/^\d{10}$/.test(mobileNumber.replace(/\D/g, ""))) {
+    const cleanPhone = mobileNumber.trim().replace(/\D/g, "");
+    if (!cleanPhone || !/^\d{10}$/.test(cleanPhone)) {
       setError("Please enter a valid 10-digit mobile number.");
       return;
     }
@@ -614,8 +642,11 @@ export default function BookAppointment() {
         lastName: lastName.trim(),
         customerName: fullCustomerName,
         name: fullCustomerName,
-        mobileNumber: mobileNumber.trim(),
-        phone: mobileNumber.trim(),
+        mobileNumber: cleanPhone,
+        phone: cleanPhone,
+        phoneNumber: cleanPhone,
+        phone_number: cleanPhone,
+        number: cleanPhone,
         serviceId: primaryService.id,
         serviceName: primaryService.name,
         additionalServices: additionalSelectedServices.map((service) => service.name),
