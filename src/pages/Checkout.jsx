@@ -14,6 +14,9 @@ import {
   RefreshCw,
   MapPin,
   Layers,
+  User,
+  Phone,
+  Mail,
 } from "lucide-react";
 
 import API from "../services/axios";
@@ -66,37 +69,65 @@ const fadeUp = {
 const cleanDraftString = (val) => {
   if (val === undefined || val === null) return "";
   const str = String(val).trim();
-  if (!str || /^(undefined|null|n\/a|na|undefined undefined|null null)$/i.test(str)) {
+  if (!str || /^(undefined|null|n\/a|na|undefined undefined|null null|sonic solutions)$/i.test(str)) {
     return "";
   }
   return str;
+};
+
+// Safely pull real logged-in user profile from local/session storage
+const getActiveUserProfile = () => {
+  try {
+    const rawUser =
+      localStorage.getItem("user") ||
+      localStorage.getItem("userInfo") ||
+      sessionStorage.getItem("user");
+
+    if (rawUser) {
+      const u = JSON.parse(rawUser);
+      const name = cleanDraftString(
+        u.name || `${u.firstName || ""} ${u.lastName || ""}`
+      );
+      const phone = cleanDraftString(
+        u.phone || u.mobile || u.mobileNumber || u.contact
+      );
+      const email = cleanDraftString(u.email);
+
+      return { name, phone, email };
+    }
+  } catch (err) {
+    console.error("[BeautyVibe] Profile extraction error:", err);
+  }
+  return { name: "", phone: "", email: "" };
 };
 
 // Extract and normalize all services from draft (supports single or multiple items)
 const getNormalizedServices = (draft) => {
   if (!draft) return [];
 
-  const rawList = 
-    draft.services || 
-    draft.selectedServices || 
-    draft.items || 
+  const rawList =
+    draft.services ||
+    draft.selectedServices ||
+    draft.items ||
     (draft.serviceId || draft.serviceName ? [draft] : []);
 
   if (!Array.isArray(rawList)) return [];
 
-  return rawList.map((item, index) => {
-    const sId = Number(item?.serviceId || item?.id || item?._id || item?.service?.id);
-    const validId = Number.isSafeInteger(sId) && sId > 0 ? sId : index + 1;
+  return rawList
+    .map((item, index) => {
+      const sId = Number(item?.serviceId || item?.id || item?._id || item?.service?.id);
+      const validId = Number.isSafeInteger(sId) && sId > 0 ? sId : index + 1;
 
-    return {
-      id: validId,
-      serviceId: validId,
-      name: cleanDraftString(item?.serviceName || item?.name || item?.title) || "Beauty Ritual",
-      category: cleanDraftString(item?.category || item?.serviceCategory) || "Beauty Service",
-      price: Number(item?.price || item?.amount || 0),
-      image: item?.image || item?.serviceImage || DEFAULT_SERVICE_IMAGE,
-    };
-  }).filter((item) => item.name);
+      return {
+        id: validId,
+        serviceId: validId,
+        name: cleanDraftString(item?.serviceName || item?.name || item?.title) || "Beauty Ritual",
+        category: cleanDraftString(item?.category || item?.serviceCategory) || "Beauty Service",
+        price: Number(item?.price || item?.amount || 0),
+        image: item?.image || item?.serviceImage || DEFAULT_SERVICE_IMAGE,
+      };
+    })
+    .filter((item) => item.name);
 };
 
 const getRequestId = () => {
@@ -109,8 +140,7 @@ const getRequestId = () => {
     ) {
       requestId = crypto.randomUUID();
     } else {
-      requestId =
-        `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      requestId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     }
 
     sessionStorage.setItem(REQUEST_KEY, requestId);
@@ -134,8 +164,7 @@ const getErrorMessage = (error) => {
     return "We could not confirm the server response. Please retry safely. Your booking request ID has been preserved.";
   }
 
-  return error?.message ||
-    "Unable to complete your booking. Please try again.";
+  return error?.message || "Unable to complete your booking. Please try again.";
 };
 
 // ======================================================
@@ -198,11 +227,38 @@ export default function Checkout() {
     }, 3500);
   }
 
-  // Derived Multi-Service Data
+  // Derived Multi-Service & Profile Data
   const servicesList = getNormalizedServices(bookingDraft);
   const primaryService = servicesList[0] || {};
-  
-  const totalPrice = servicesList.reduce((sum, item) => sum + (Number(item.price) || 0), 0) || 
+  const profile = getActiveUserProfile();
+
+  const customerName =
+    cleanDraftString(bookingDraft?.customerName) ||
+    cleanDraftString(bookingDraft?.name) ||
+    cleanDraftString(bookingDraft?.userName) ||
+    cleanDraftString(
+      `${bookingDraft?.firstName || ""} ${bookingDraft?.lastName || ""}`
+    ) ||
+    profile.name ||
+    "Valued Client";
+
+  const mobileNumber =
+    cleanDraftString(bookingDraft?.mobileNumber) ||
+    cleanDraftString(bookingDraft?.phone) ||
+    cleanDraftString(bookingDraft?.mobile) ||
+    cleanDraftString(bookingDraft?.contact) ||
+    cleanDraftString(bookingDraft?.customerPhone) ||
+    profile.phone ||
+    "";
+
+  const email =
+    cleanDraftString(bookingDraft?.email) ||
+    cleanDraftString(bookingDraft?.customerEmail) ||
+    profile.email ||
+    "";
+
+  const totalPrice =
+    servicesList.reduce((sum, item) => sum + (Number(item.price) || 0), 0) ||
     Number(bookingDraft?.price || bookingDraft?.amount || 0);
 
   const address = cleanDraftString(bookingDraft?.address);
@@ -237,14 +293,15 @@ export default function Checkout() {
 
       const requestId = getRequestId();
 
-      // Payload supporting multiple services or single primary service fallback
+      // Payload supporting multi-service cart and real user details
       const payload = {
         serviceId: primaryService.serviceId || 1,
-        serviceName: servicesList.length > 1 
-          ? `${primaryService.name} + ${servicesList.length - 1} more service(s)` 
-          : primaryService.name,
+        serviceName:
+          servicesList.length > 1
+            ? `${primaryService.name} + ${servicesList.length - 1} more service(s)`
+            : primaryService.name,
         category: primaryService.category || "Beauty Ritual",
-        services: servicesList, // Multi-services array payload
+        services: servicesList,
         amount: totalPrice,
         type: "HOME",
         date: appointmentDate,
@@ -252,17 +309,19 @@ export default function Checkout() {
         address: address,
         paymentMethod: paymentMethod,
         requestId: requestId,
+        customerName: customerName,
+        mobileNumber: mobileNumber,
+        phone: mobileNumber,
+        customerPhone: mobileNumber,
+        customerEmail: email,
+        email: email,
       };
 
-      const response = await API.post(
-        "/api/appointments",
-        payload,
-        {
-          headers: {
-            "Idempotency-Key": requestId,
-          },
-        }
-      );
+      const response = await API.post("/api/appointments", payload, {
+        headers: {
+          "Idempotency-Key": requestId,
+        },
+      });
 
       const result = response.data;
 
@@ -272,13 +331,23 @@ export default function Checkout() {
         );
       }
 
-      const confirmedBooking = result.data;
+      // Merge verified API output with complete real customer details for session storage
+      const confirmedBooking = {
+        ...result.data,
+        customerName: customerName,
+        mobileNumber: mobileNumber,
+        phone: mobileNumber,
+        customerPhone: mobileNumber,
+        customerEmail: email,
+        email: email,
+        services: servicesList,
+        address: address,
+        date: appointmentDate,
+        time: appointmentTime,
+        amount: totalPrice,
+      };
 
-      sessionStorage.setItem(
-        CONFIRMED_KEY,
-        JSON.stringify(confirmedBooking)
-      );
-
+      sessionStorage.setItem(CONFIRMED_KEY, JSON.stringify(confirmedBooking));
       sessionStorage.removeItem(DRAFT_KEY);
       sessionStorage.removeItem(REQUEST_KEY);
 
@@ -295,7 +364,6 @@ export default function Checkout() {
           replace: true,
         });
       }, 700);
-
     } catch (error) {
       console.error("[BeautyVibe] Booking request failed:", error.response?.data || error);
       const message = getErrorMessage(error);
@@ -382,17 +450,47 @@ export default function Checkout() {
             <h1 className="font-serif text-2xl font-bold leading-tight sm:text-3xl">
               Review & Confirm
               <span className="mt-1 block text-[#C56E4E]">
-                {servicesList.length > 1 ? `Your ${servicesList.length} Selected Rituals` : "Your Home Appointment"}
+                {servicesList.length > 1
+                  ? `Your ${servicesList.length} Selected Rituals`
+                  : "Your Home Appointment"}
               </span>
             </h1>
 
             <p className="mt-3 max-w-lg text-xs leading-6 text-[#8C7A70] sm:text-sm">
-              Review your selected services, schedule, and doorstep address before confirming your booking.
+              Review your client information, selected services, schedule, and doorstep address before confirming your booking.
             </p>
           </div>
 
           <div className="p-5 sm:p-10">
-            
+            {/* Real Customer Information Card */}
+            <div className="mb-8 rounded-[1.5rem] border border-[#EADBD2] bg-[#FFF8F3] p-5 space-y-3">
+              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#C56E4E]">
+                <User size={14} />
+                Client Profile Details
+              </div>
+
+              <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 pt-1 text-xs">
+                <div className="flex items-center gap-2 text-[#2D2623] font-semibold">
+                  <User size={13} className="text-[#8C7A70]" />
+                  <span>{customerName}</span>
+                </div>
+
+                {mobileNumber && (
+                  <div className="flex items-center gap-2 text-[#2D2623] font-mono">
+                    <Phone size={13} className="text-[#8C7A70]" />
+                    <span>{mobileNumber}</span>
+                  </div>
+                )}
+
+                {email && (
+                  <div className="flex items-center gap-2 text-[#2D2623] sm:col-span-2">
+                    <Mail size={13} className="text-[#8C7A70]" />
+                    <span className="truncate">{email}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
             {/* Multi-Service Itemized List */}
             <div className="mb-8 space-y-4">
               <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#8C7A70]">
