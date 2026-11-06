@@ -52,18 +52,28 @@ export default function BookingConfirmation() {
         console.error("Error parsing confirmation data:", e);
       }
     } else {
-      // Fallback default state with user profile lookup from localStorage if available
+      // Fallback default state with draft and user profile lookup
       let userPhone = "";
       let userName = "";
       let userEmail = "";
 
       try {
-        const storedUser = localStorage.getItem("user") || localStorage.getItem("userInfo") || sessionStorage.getItem("user");
-        if (storedUser) {
-          const u = JSON.parse(storedUser);
-          userPhone = u.phone || u.mobile || u.mobileNumber || u.contact || "";
-          userName = u.name || `${u.firstName || ""} ${u.lastName || ""}`.trim();
-          userEmail = u.email || "";
+        const draft = sessionStorage.getItem("beautyvibe_booking_draft");
+        if (draft) {
+          const d = JSON.parse(draft);
+          userPhone = d.mobileNumber || d.phone || d.mobile || d.contact || d.customerPhone || d.customerDetails?.phone || "";
+          userName = cleanNameString(d.customerName || d.name || d.userName || `${d.firstName || ""} ${d.lastName || ""}`) || "";
+          userEmail = d.email || d.customerEmail || "";
+        }
+
+        if (!userPhone || !userName) {
+          const storedUser = localStorage.getItem("user") || localStorage.getItem("userInfo") || sessionStorage.getItem("user");
+          if (storedUser) {
+            const u = JSON.parse(storedUser);
+            if (!userPhone) userPhone = u.phone || u.mobile || u.mobileNumber || u.contact || "";
+            if (!userName) userName = u.name || `${u.firstName || ""} ${u.lastName || ""}`.trim();
+            if (!userEmail) userEmail = u.email || "";
+          }
         }
       } catch (err) {
         // ignore
@@ -107,9 +117,9 @@ export default function BookingConfirmation() {
   const rawAmount = booking.amount ?? booking.totalAmount ?? booking.price ?? 2499;
   const finalAmount = Number(rawAmount) || servicesList.reduce((acc, s) => acc + (Number(s.price) || 0), 0);
 
-  // Comprehensive resolvers for real user info across booking payload and localStorage
+  // Comprehensive resolvers for real user info across booking payload, draft, and localStorage
   const getRealName = () => {
-    const name = 
+    const directName = 
       cleanNameString(booking?.customerName) || 
       cleanNameString(booking?.name) || 
       cleanNameString(booking?.userName) ||
@@ -117,7 +127,16 @@ export default function BookingConfirmation() {
       cleanNameString(booking?.customer?.name) ||
       cleanNameString(`${booking?.firstName || ''} ${booking?.lastName || ''}`);
 
-    if (name && !/9876543210/.test(name)) return name;
+    if (directName && !/9876543210/.test(directName)) return directName;
+
+    try {
+      const draft = sessionStorage.getItem("beautyvibe_booking_draft");
+      if (draft) {
+        const d = JSON.parse(draft);
+        const dn = cleanNameString(d.customerName || d.name || `${d.firstName || ""} ${d.lastName || ""}`);
+        if (dn) return dn;
+      }
+    } catch (e) {}
 
     try {
       const storedUser = localStorage.getItem("user") || localStorage.getItem("userInfo") || sessionStorage.getItem("user");
@@ -138,6 +157,8 @@ export default function BookingConfirmation() {
       booking?.phone || 
       booking?.mobile || 
       booking?.contact ||
+      booking?.customerDetails?.phone ||
+      booking?.customerDetails?.mobileNumber ||
       booking?.user?.phone ||
       booking?.user?.mobile ||
       booking?.user?.mobileNumber ||
@@ -148,12 +169,25 @@ export default function BookingConfirmation() {
       return directPhone.trim();
     }
 
+    // Check booking draft
+    try {
+      const draft = sessionStorage.getItem("beautyvibe_booking_draft");
+      if (draft) {
+        const d = JSON.parse(draft);
+        const dp = d.mobileNumber || d.phone || d.mobile || d.contact || d.customerPhone || d.customerDetails?.phone || d.customerDetails?.mobileNumber;
+        if (dp && typeof dp === "string" && dp.trim() && !dp.includes("9876543210")) {
+          return dp.trim();
+        }
+      }
+    } catch (e) {}
+
+    // Check stored user profile
     try {
       const storedUser = localStorage.getItem("user") || localStorage.getItem("userInfo") || sessionStorage.getItem("user");
       if (storedUser) {
         const u = JSON.parse(storedUser);
         const p = u.phone || u.mobile || u.mobileNumber || u.contact;
-        if (p && typeof p === "string" && p.trim()) {
+        if (p && typeof p === "string" && p.trim() && !p.includes("9876543210")) {
           return p.trim();
         }
       }
@@ -165,6 +199,14 @@ export default function BookingConfirmation() {
   const getRealEmail = () => {
     const email = booking?.customerEmail || booking?.email || booking?.user?.email || booking?.customer?.email;
     if (email) return email;
+
+    try {
+      const draft = sessionStorage.getItem("beautyvibe_booking_draft");
+      if (draft) {
+        const d = JSON.parse(draft);
+        if (d.email || d.customerEmail) return d.email || d.customerEmail;
+      }
+    } catch (e) {}
 
     try {
       const storedUser = localStorage.getItem("user") || localStorage.getItem("userInfo") || sessionStorage.getItem("user");
