@@ -28,9 +28,56 @@ import {
   ChevronDown,
   X,
   Grid,
+  PhoneCall,
+  AlertTriangle,
 } from "lucide-react";
 import { io } from "socket.io-client";
 import API from "../services/axios";
+
+// ======================================================
+// LOCATION & GEOFENCING CONFIGURATION (GUNTUR 30KM)
+// ======================================================
+const GUNTUR_CENTER = { lat: 16.3067, lng: 80.4365 };
+const MAX_SERVICE_RADIUS_KM = 30;
+const ADMIN_CONTACT_PHONE = "7036682852";
+
+// Local keywords within ~30km of Guntur for text verification
+const GUNTUR_AREA_KEYWORDS = [
+  "guntur",
+  "tenali",
+  "mangalagiri",
+  "amaravati",
+  "tadepalle",
+  "narasaraopet",
+  "chebrole",
+  "prathipadu",
+  "pedakakani",
+  "ponnur",
+  "kaza",
+  "chinakakani",
+  "vaddeswaram",
+  "vijayawada",
+  "tadikonda",
+  "phirangipuram",
+  "medarametla",
+  "bapatla",
+  "chilakaluripet",
+];
+
+// Haversine Distance Formula in Kilometers
+const calculateHaversineDistance = (lat1, lon1, lat2, lon2) => {
+  const R = 6371; // Radius of the earth in km
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c; // Distance in km
+};
 
 const availableTimeSlots = [
   "09:00 AM",
@@ -114,7 +161,6 @@ const parseSlotToMinutes = (slot) => {
   return hours * 60 + minutes;
 };
 
-// Helper to calculate duration in minutes
 const parseDurationToMinutes = (durationStr) => {
   if (!durationStr) return 45;
   const str = String(durationStr).toLowerCase();
@@ -134,7 +180,6 @@ const parseDurationToMinutes = (durationStr) => {
   return totalMinutes;
 };
 
-// Helper function to extract user details from localStorage
 const getStoredUserField = (fieldKeys) => {
   const storageKeys = ["beautyvibe_user", "user", "userInfo", "profile", "auth"];
   for (const storageKey of storageKeys) {
@@ -153,7 +198,6 @@ const getStoredUserField = (fieldKeys) => {
   return "";
 };
 
-// Helper function to resolve service images properly
 const extractServiceImage = (service) => {
   const rawImg =
     service?.image ||
@@ -195,6 +239,10 @@ export default function BookAppointment() {
   const [isAllServicesOpen, setIsAllServicesOpen] = useState(false);
   const [showCheckoutHoverTooltip, setShowCheckoutHoverTooltip] = useState(false);
 
+  // Out-of-Service Area Modal State
+  const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
+  const [detectedDistance, setDetectedDistance] = useState(null);
+
   // Country Code State
   const [selectedCountryCode, setSelectedCountryCode] = useState("+91");
 
@@ -234,7 +282,6 @@ export default function BookAppointment() {
   const [date, setDate] = useState(() => today);
   const [time, setTime] = useState("");
 
-  // Persist customer updates to localStorage
   useEffect(() => {
     try {
       const existing = JSON.parse(localStorage.getItem("beautyvibe_user") || "{}");
@@ -253,7 +300,6 @@ export default function BookAppointment() {
     } catch {}
   }, [firstName, lastName, mobileNumber, selectedCountryCode]);
 
-  // Generate real-time next 5 days including today
   const nextFiveDays = useMemo(() => {
     const list = [];
     const baseDate = new Date();
@@ -275,7 +321,6 @@ export default function BookAppointment() {
     return list;
   }, [today]);
 
-  // Saved Addresses State
   const [savedAddresses, setSavedAddresses] = useState(() => {
     try {
       const local = localStorage.getItem("beautyvibe_addresses");
@@ -294,17 +339,11 @@ export default function BookAppointment() {
   const [submitting, setSubmitting] = useState(false);
   const [hoveredSlot, setHoveredSlot] = useState(null);
 
-  /* =========================================
-     LIVE CLOCK
-  ========================================= */
   useEffect(() => {
     const timer = setInterval(() => setLiveNow(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
 
-  /* =========================================
-     FETCH SAVED ADDRESSES & USER PROFILE
-  ========================================= */
   useEffect(() => {
     let cancelled = false;
 
@@ -355,9 +394,6 @@ export default function BookAppointment() {
     };
   }, []);
 
-  /* =========================================
-     FETCH SERVICES WITH ROBUST IMAGE RESOLUTION
-  ========================================= */
   useEffect(() => {
     let cancelled = false;
 
@@ -409,7 +445,7 @@ export default function BookAppointment() {
         if (!cancelled) {
           setError("Unable to load services. Please refresh the page.");
         }
-      } finally {
+      } font-medium finally {
         if (!cancelled) setLoading(false);
       }
     };
@@ -420,9 +456,6 @@ export default function BookAppointment() {
     };
   }, [initialServiceId]);
 
-  /* =========================================
-     FETCH BOOKED SLOTS
-  ========================================= */
   const fetchBookedSlots = useCallback(async () => {
     if (!date) {
       setBookedSlots([]);
@@ -449,9 +482,6 @@ export default function BookAppointment() {
     fetchBookedSlots();
   }, [fetchBookedSlots]);
 
-  /* =========================================
-     SOCKET.IO LIVE SLOT UPDATES
-  ========================================= */
   useEffect(() => {
     const configuredUrl =
       import.meta.env.VITE_SOCKET_URL ||
@@ -497,7 +527,7 @@ export default function BookAppointment() {
   }, [date]);
 
   /* =========================================
-     GEOLOCATION & ADDRESS HANDLERS
+     GEOLOCATION & GUNTUR 30KM STRICTION HANDLERS
   ========================================= */
   const handleAddressChange = (event) => {
     setAddress(event.target.value);
@@ -529,6 +559,25 @@ export default function BookAppointment() {
     navigator.geolocation.getCurrentPosition(
       async (position) => {
         const { latitude, longitude, accuracy } = position.coords;
+        
+        // Measure real distance from Guntur City Center
+        const distanceKm = calculateHaversineDistance(
+          GUNTUR_CENTER.lat,
+          GUNTUR_CENTER.lng,
+          latitude,
+          longitude
+        );
+
+        setDetectedDistance(distanceKm.toFixed(1));
+
+        // Strictly check if location exceeds 30 km radius
+        if (distanceKm > MAX_SERVICE_RADIUS_KM) {
+          setLocating(false);
+          setIsLocationModalOpen(true);
+          setError(`Location detected is ${distanceKm.toFixed(1)} km from Guntur (Exceeds 30 km limit).`);
+          return;
+        }
+
         setLocationCoordinates({ latitude, longitude, accuracy });
 
         try {
@@ -549,12 +598,11 @@ export default function BookAppointment() {
           if (result.display_name) {
             setAddress(result.display_name);
           } else {
-            setAddress(`Latitude: ${latitude.toFixed(6)}, Longitude: ${longitude.toFixed(6)}`);
+            setAddress(`Guntur Area (Lat: ${latitude.toFixed(4)}, Lon: ${longitude.toFixed(4)})`);
           }
         } catch (err) {
           console.error("Reverse geocoding failed:", err);
-          setAddress(`Latitude: ${latitude.toFixed(6)}, Longitude: ${longitude.toFixed(6)}`);
-          setError("Coordinates detected, but street address could not be resolved automatically.");
+          setAddress(`Guntur Area (Lat: ${latitude.toFixed(4)}, Lon: ${longitude.toFixed(4)})`);
         } finally {
           setLocating(false);
         }
@@ -572,9 +620,6 @@ export default function BookAppointment() {
     );
   };
 
-  /* =========================================
-     SERVICE & DURATION CALCULATIONS
-  ========================================= */
   const primarySelectedId = selectedServiceIds[0] || allServices[0]?.id || "";
 
   const primaryService = useMemo(
@@ -594,7 +639,6 @@ export default function BookAppointment() {
     additionalSelectedIds.includes(service.id)
   );
 
-  // CURATED 2 TO 3 RECOMMENDATIONS ONLY FOR THE MAIN PAGE
   const recommendedServices = useMemo(() => {
     return allServices
       .filter((service) => !selectedServiceIds.includes(service.id))
@@ -608,7 +652,6 @@ export default function BookAppointment() {
       0
     );
 
-  // Total Duration Calculation in Minutes
   const totalDurationMinutes = useMemo(() => {
     const primaryMin = parseDurationToMinutes(primaryService.duration);
     const addOnsMin = additionalSelectedServices.reduce(
@@ -633,9 +676,6 @@ export default function BookAppointment() {
     setSelectedServiceIds((previous) => previous.filter((item) => item !== String(id)));
   };
 
-  /* =========================================
-     CHECKOUT HANDLER WITH 1-HR & GUNTUR VALIDATION
-  ========================================= */
   const handleProceedToCheckout = async (event) => {
     event.preventDefault();
     setError("");
@@ -661,7 +701,6 @@ export default function BookAppointment() {
       return;
     }
 
-    // MINIMUM 1 HOUR (60 MINS) SERVICE VALIDATION
     if (totalDurationMinutes < 60) {
       setError(`Minimum appointment duration for doorstep service is 1 Hour (60 mins). Current total: ${totalDurationMinutes} mins. Please add another ritual.`);
       return;
@@ -684,6 +723,16 @@ export default function BookAppointment() {
 
     if (!address.trim()) {
       setError("Please enter or select your doorstep service address.");
+      return;
+    }
+
+    // Text-based Guntur coverage validation if GPS coordinates aren't used
+    const lowerAddress = address.trim().toLowerCase();
+    const isGunturArea = GUNTUR_AREA_KEYWORDS.some((keyword) => lowerAddress.includes(keyword));
+
+    if (!locationCoordinates && !isGunturArea) {
+      setIsLocationModalOpen(true);
+      setError("Service is not available in your area. Doorstep appointments are limited to Guntur and within a 30 km radius.");
       return;
     }
 
@@ -804,7 +853,7 @@ export default function BookAppointment() {
           </div>
         </motion.div>
 
-        {/* Location Notice Banner */}
+        {/* Location Notice Banner - Strictly 30km Guntur */}
         <motion.div
           variants={fadeUp}
           className="mb-8 flex items-center gap-3 rounded-2xl border border-[#C56E4E]/30 bg-[#FFF6F0] p-4 text-xs shadow-sm"
@@ -818,7 +867,7 @@ export default function BookAppointment() {
               <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
             </p>
             <p className="mt-0.5 font-medium text-[#8C7A70]">
-              Doorstep appointments are currently accepted exclusively in <strong className="text-[#C56E4E]">Guntur and within a 20 km radius</strong>.
+              Doorstep appointments are currently accepted exclusively in <strong className="text-[#C56E4E]">Guntur and within a 30 km radius</strong>.
             </p>
           </div>
         </motion.div>
@@ -829,7 +878,7 @@ export default function BookAppointment() {
             variants={fadeUp}
             className="space-y-8 rounded-[2.5rem] border border-[#EADBD2] bg-white p-6 shadow-sm sm:p-8 lg:col-span-7"
           >
-            {/* Customer Information with Country Code Drawer */}
+            {/* Customer Information */}
             <section>
               <h2 className="mb-4 font-serif text-lg font-bold flex items-center justify-between">
                 <span>1. Customer Details</span>
@@ -976,7 +1025,7 @@ export default function BookAppointment() {
               )}
             </section>
 
-            {/* Recommended Add-on Rituals with VIEW MORE drawer button */}
+            {/* Recommended Add-on Rituals */}
             {recommendedServices.length > 0 && (
               <section>
                 <div className="mb-3 flex items-center justify-between">
@@ -986,7 +1035,7 @@ export default function BookAppointment() {
                   <button
                     type="button"
                     onClick={() => setIsAllServicesOpen(true)}
-                    className="flex items-center gap-1.5 text-xs font-bold text-[#C56E4E] hover:underline"
+                    className="flex items-center gap-1.5 text-xs font-bold text-[#C56E4E] hover:underline cursor-pointer"
                   >
                     <Grid size={13} />
                     View More Services
@@ -1046,14 +1095,14 @@ export default function BookAppointment() {
               </section>
             )}
 
-            {/* Doorstep Address */}
+            {/* Doorstep Address with Guntur 30km Radius Verification */}
             <section>
               <div className="mb-3 flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
                 <div>
                   <h2 className="font-serif text-lg font-bold">
                     3. Doorstep Address
                   </h2>
-                  <p className="text-[11px] text-[#8C7A70]">Must be within Guntur & 20 km radius</p>
+                  <p className="text-[11px] text-[#8C7A70]">Exclusively within Guntur & 30 km radius</p>
                 </div>
                 <button
                   type="button"
@@ -1083,7 +1132,7 @@ export default function BookAppointment() {
                           key={savedId}
                           type="button"
                           onClick={() => handleSelectSavedAddress(saved)}
-                          className={`flex items-start gap-3 rounded-2xl border p-3 text-left transition ${
+                          className={`flex items-start gap-3 rounded-2xl border p-3 text-left transition cursor-pointer ${
                             isSelected
                               ? "border-[#C56E4E] bg-[#FFF6F0] ring-2 ring-[#C56E4E]/15"
                               : "border-[#EADBD2] bg-[#FCF9F6] hover:border-[#C56E4E]/50"
@@ -1126,9 +1175,9 @@ export default function BookAppointment() {
                 <div className="mt-3 flex items-start gap-2 rounded-xl border border-emerald-100 bg-emerald-50 p-3 text-xs text-emerald-800">
                   <MapPinned size={16} className="mt-0.5 shrink-0" />
                   <div>
-                    <p className="font-bold">GPS Coordinates detected</p>
+                    <p className="font-bold">Verified within Guntur 30km radius</p>
                     <p className="mt-1 break-all">
-                      {locationCoordinates.latitude.toFixed(6)}, {locationCoordinates.longitude.toFixed(6)}
+                      GPS: {locationCoordinates.latitude.toFixed(4)}, {locationCoordinates.longitude.toFixed(4)} {detectedDistance && `(${detectedDistance} km from city center)`}
                     </p>
                   </div>
                 </div>
@@ -1142,7 +1191,6 @@ export default function BookAppointment() {
               </h2>
 
               <div className="space-y-5 rounded-3xl border border-[#EADBD2] bg-[#FCF9F6] p-5">
-                {/* Realtime Next 5 Days Selector */}
                 <div>
                   <div className="mb-2.5 flex items-center justify-between">
                     <label className="block text-[11px] font-bold uppercase tracking-wider text-[#8C7A70]">
@@ -1174,7 +1222,7 @@ export default function BookAppointment() {
                             setTime("");
                             setError("");
                           }}
-                          className={`flex flex-col items-center justify-center rounded-2xl border p-2.5 text-center transition-all ${
+                          className={`flex flex-col items-center justify-center rounded-2xl border p-2.5 text-center transition-all cursor-pointer ${
                             isSelected
                               ? "border-[#C56E4E] bg-[#C56E4E] text-white shadow-md ring-2 ring-[#C56E4E]/20"
                               : "border-[#EADBD2] bg-white text-[#5C4841] hover:border-[#C56E4E]"
@@ -1294,7 +1342,6 @@ export default function BookAppointment() {
                   </div>
                 </div>
 
-                {/* Active COD Option */}
                 <div className="flex items-center gap-3 rounded-2xl border-2 border-[#C56E4E] bg-[#FFF6F0] p-4 text-left shadow-sm">
                   <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#C56E4E] text-white shadow-sm">
                     <Check size={22} />
@@ -1381,7 +1428,7 @@ export default function BookAppointment() {
 
                 <div className="border-t border-white/10 pt-3">
                   <span className="mb-1 block text-[9px] uppercase tracking-wider text-[#A39292]">
-                    Home Address (Guntur / 20km Radius)
+                    Home Address (Guntur / 30km Radius)
                   </span>
                   <p className="line-clamp-3 break-words text-xs text-white/90">
                     {address || "Enter your address in Guntur or detect location."}
@@ -1411,7 +1458,6 @@ export default function BookAppointment() {
               </div>
             </div>
 
-            {/* Error & Submit Button with Block Hover Tooltip */}
             <div className="rounded-[2.5rem] border border-[#EADBD2] bg-white p-6 shadow-sm relative">
               <AnimatePresence>
                 {error && (
@@ -1475,6 +1521,74 @@ export default function BookAppointment() {
           </motion.aside>
         </form>
 
+        {/* LOCATION NOT AVAILABLE (OUTSIDE 30KM RADIUS) MODAL */}
+        <AnimatePresence>
+          {isLocationModalOpen && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-md"
+            >
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0, y: 20 }}
+                animate={{ scale: 1, opacity: 1, y: 0 }}
+                exit={{ scale: 0.9, opacity: 0, y: 20 }}
+                className="relative w-full max-w-md overflow-hidden rounded-[2.5rem] bg-white p-6 sm:p-8 text-center shadow-2xl border border-[#EADBD2]"
+              >
+                <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-rose-50 text-rose-500 shadow-inner">
+                  <AlertTriangle size={36} />
+                </div>
+
+                <h3 className="font-serif text-2xl font-bold text-[#2D2623]">
+                  Service Not Available
+                </h3>
+
+                <p className="mt-2 text-xs leading-relaxed text-[#8C7A70]">
+                  Doorstep luxury services are strictly restricted to <strong className="text-[#C56E4E]">Guntur city and within a 30 km radius</strong>.
+                  {detectedDistance && (
+                    <span className="block mt-1 text-[#B33A3A] font-bold">
+                      Your detected location is ~{detectedDistance} km away.
+                    </span>
+                  )}
+                </p>
+
+                <div className="my-6 rounded-2xl border border-[#C56E4E]/30 bg-[#FFF6F0] p-4 text-left">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-[#8C7A70]">
+                    Need Special Assistance?
+                  </p>
+                  <p className="mt-1 text-xs font-semibold text-[#2D2623]">
+                    Contact our admin team to request doorstep expansion for your area.
+                  </p>
+                  <a
+                    href={`tel:${ADMIN_CONTACT_PHONE}`}
+                    className="mt-3 flex items-center justify-center gap-2 rounded-xl bg-[#C56E4E] px-4 py-3 text-xs font-bold text-white shadow-md hover:bg-[#A35539] transition-all"
+                  >
+                    <PhoneCall size={16} />
+                    Call Admin: +91 {ADMIN_CONTACT_PHONE}
+                  </a>
+                </div>
+
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setIsLocationModalOpen(false)}
+                    className="flex-1 rounded-full border border-[#EADBD2] bg-white py-3 text-xs font-bold uppercase tracking-wider text-[#2D2623] hover:bg-[#FCF9F6] transition cursor-pointer"
+                  >
+                    Change Address
+                  </button>
+                  <a
+                    href={`tel:${ADMIN_CONTACT_PHONE}`}
+                    className="flex-1 rounded-full bg-[#2D2623] py-3 text-xs font-bold uppercase tracking-wider text-white hover:bg-black transition text-center"
+                  >
+                    Contact Support
+                  </a>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* ALL SERVICES DRAWER / MODAL */}
         <AnimatePresence>
           {isAllServicesOpen && (
@@ -1502,7 +1616,7 @@ export default function BookAppointment() {
                   <button
                     type="button"
                     onClick={() => setIsAllServicesOpen(false)}
-                    className="rounded-full bg-[#FCF9F6] p-2 text-[#8C7A70] hover:bg-[#FFF6F0] hover:text-[#C56E4E]"
+                    className="rounded-full bg-[#FCF9F6] p-2 text-[#8C7A70] hover:bg-[#FFF6F0] hover:text-[#C56E4E] cursor-pointer"
                   >
                     <X size={20} />
                   </button>
@@ -1551,7 +1665,7 @@ export default function BookAppointment() {
                           <button
                             type="button"
                             onClick={() => toggleRecommendedService(service.id)}
-                            className={`flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-bold transition ${
+                            className={`flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-bold transition cursor-pointer ${
                               isSelected
                                 ? "bg-rose-500 text-white"
                                 : "bg-[#C56E4E] text-white hover:bg-[#A35539]"
@@ -1583,7 +1697,7 @@ export default function BookAppointment() {
                   <button
                     type="button"
                     onClick={() => setIsAllServicesOpen(false)}
-                    className="rounded-full bg-[#C56E4E] px-6 py-2.5 text-xs font-bold uppercase text-white shadow-md hover:bg-[#A35539]"
+                    className="rounded-full bg-[#C56E4E] px-6 py-2.5 text-xs font-bold uppercase text-white shadow-md hover:bg-[#A35539] cursor-pointer"
                   >
                     Done Selecting
                   </button>
