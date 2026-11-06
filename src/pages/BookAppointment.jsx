@@ -559,19 +559,25 @@ export default function BookAppointment() {
     setSubmitting(true);
 
     try {
+      const fullCustomerName = `${firstName.trim()} ${lastName.trim()}`.trim();
       const bookingDraft = {
         firstName: firstName.trim(),
         lastName: lastName.trim(),
+        customerName: fullCustomerName,
+        name: fullCustomerName,
         mobileNumber: mobileNumber.trim(),
+        phone: mobileNumber.trim(),
         serviceId: primaryService.id,
         serviceName: primaryService.name,
         additionalServices: additionalSelectedServices.map((service) => service.name),
         additionalServiceIds: additionalSelectedServices.map((service) => service.id),
         price: totalCalculatedPrice,
+        amount: totalCalculatedPrice,
         date,
         time,
         type: "HOME",
         address: address.trim(),
+        doorstepAddress: address.trim(),
         paymentMethod: "cod", // Enforced COD
         location: locationCoordinates,
         image: primaryService.image,
