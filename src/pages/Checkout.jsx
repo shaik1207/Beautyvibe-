@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
@@ -60,11 +59,20 @@ const fadeUp = {
 };
 
 // ======================================================
-// HELPERS
+// HELPERS & SANITIZATION
 // ======================================================
 
+// Prevents literal "undefined" or "null" strings from local storage caching
+const cleanDraftString = (val) => {
+  if (val === undefined || val === null) return "";
+  const str = String(val).trim();
+  if (!str || /^(undefined|null|n\/a|na|undefined undefined|null null)$/i.test(str)) {
+    return "";
+  }
+  return str;
+};
+
 // Extract the actual MySQL service ID from supported draft shapes.
-// Never substitute an array index or service name.
 const getServiceId = (draft) => {
   const possibleIds = [
     draft?.serviceId,
@@ -216,6 +224,40 @@ export default function Checkout() {
   }
 
   // ====================================================
+  // DERIVED DATA (Sanitized & Centralized)
+  // ====================================================
+
+  const displayedServiceId = getServiceId(bookingDraft);
+
+  const serviceName =
+    cleanDraftString(bookingDraft?.serviceName) ||
+    cleanDraftString(bookingDraft?.name) ||
+    cleanDraftString(bookingDraft?.service?.name) ||
+    cleanDraftString(bookingDraft?.selectedService?.name) ||
+    "Beauty Service";
+
+  const category =
+    cleanDraftString(bookingDraft?.category) ||
+    cleanDraftString(bookingDraft?.service?.category) ||
+    cleanDraftString(bookingDraft?.selectedService?.category) ||
+    "Beauty Ritual";
+
+  const price = 
+    Number(bookingDraft?.price) || 
+    Number(bookingDraft?.amount) ||
+    Number(bookingDraft?.service?.price) || 
+    Number(bookingDraft?.selectedService?.price) || 
+    0;
+
+  const address = cleanDraftString(bookingDraft?.address);
+
+  const image = 
+    bookingDraft?.image ||
+    bookingDraft?.service?.image ||
+    bookingDraft?.selectedService?.image ||
+    DEFAULT_SERVICE_IMAGE;
+
+  // ====================================================
   // CONFIRM BOOKING
   // ====================================================
 
@@ -231,149 +273,70 @@ export default function Checkout() {
     setErrorMessage("");
 
     try {
-      // -----------------------------------------------
-      // 1. Extract service information
-      // -----------------------------------------------
-
-      const serviceId = getServiceId(bookingDraft);
-
-      const serviceName =
-        bookingDraft.serviceName ||
-        bookingDraft.name ||
-        bookingDraft.service?.name ||
-        bookingDraft.selectedService?.name ||
-        "";
-
-      const category =
-        bookingDraft.category ||
-        bookingDraft.service?.category ||
-        bookingDraft.selectedService?.category ||
-        "General";
-
-      const amount = Number(bookingDraft.price);
-
-      const appointmentDate = bookingDraft.date;
-      const appointmentTime = bookingDraft.time;
-
-      const address = String(
-        bookingDraft.address || ""
-      ).trim();
-
-      const paymentMethod =
-        bookingDraft.paymentMethod || "upi";
+      const appointmentDate = cleanDraftString(bookingDraft.date);
+      const appointmentTime = cleanDraftString(bookingDraft.time);
+      const paymentMethod = cleanDraftString(bookingDraft.paymentMethod) || "upi";
 
       // -----------------------------------------------
-      // 2. Validate service ID
+      // 1. Validate service ID
       // -----------------------------------------------
-
-      if (!serviceId) {
+      if (!displayedServiceId) {
         throw new Error(
           "The selected service has an invalid or missing database ID. Please return to Services and select the service again."
         );
       }
 
       // -----------------------------------------------
-      // 3. Validate service name
+      // 2. Validate service name
       // -----------------------------------------------
-
-      if (
-        typeof serviceName !== "string" ||
-        !serviceName.trim()
-      ) {
-        throw new Error(
-          "Please select a valid service."
-        );
+      if (!serviceName) {
+        throw new Error("Please select a valid service.");
       }
 
       // -----------------------------------------------
-      // 4. Validate displayed price
+      // 3. Validate displayed price
       // -----------------------------------------------
-
-      if (!Number.isFinite(amount) || amount < 0) {
-        throw new Error(
-          "The service price is invalid."
-        );
+      if (!Number.isFinite(price) || price < 0) {
+        throw new Error("The service price is invalid.");
       }
 
       // -----------------------------------------------
-      // 5. Validate appointment date
+      // 4. Validate appointment schedule
       // -----------------------------------------------
-
-      if (
-        typeof appointmentDate !== "string" ||
-        !appointmentDate.trim()
-      ) {
-        throw new Error(
-          "Please select an appointment date."
-        );
+      if (!appointmentDate) {
+        throw new Error("Please select an appointment date.");
+      }
+      if (!appointmentTime) {
+        throw new Error("Please select an appointment time.");
       }
 
       // -----------------------------------------------
-      // 6. Validate appointment time
+      // 5. Validate home service address
       // -----------------------------------------------
-
-      if (
-        typeof appointmentTime !== "string" ||
-        !appointmentTime.trim()
-      ) {
-        throw new Error(
-          "Please select an appointment time."
-        );
-      }
-
-      // -----------------------------------------------
-      // 7. Validate home service address
-      // -----------------------------------------------
-
       if (!address) {
-        throw new Error(
-          "Your doorstep service address is required."
-        );
+        throw new Error("Your doorstep service address is required.");
       }
 
       // -----------------------------------------------
-      // 8. Keep a persistent request ID for retries
+      // 6. Keep a persistent request ID for retries
       // -----------------------------------------------
-
       const requestId = getRequestId();
 
       // -----------------------------------------------
-      // 9. Prepare booking payload
+      // 7. Prepare booking payload
       // -----------------------------------------------
-
       const payload = {
-        serviceId: serviceId,
-
-        serviceName: serviceName.trim(),
-
+        serviceId: displayedServiceId,
+        serviceName: serviceName,
         category: category,
-
-        // This amount is informational.
-        // Backend must calculate the authoritative amount.
-        amount: amount,
-
+        amount: price,
         type: "HOME",
-
-        date: appointmentDate.trim(),
-
-        time: appointmentTime.trim(),
-
+        date: appointmentDate,
+        time: appointmentTime,
         address: address,
-
         paymentMethod: paymentMethod,
-
         requestId: requestId,
       };
-
-      // Final safety check before API request.
-      if (
-        !Number.isSafeInteger(payload.serviceId) ||
-        payload.serviceId <= 0
-      ) {
-        throw new Error(
-          "Invalid service database ID. Please select your service again."
-        );
-      }
 
       console.log(
         "[BeautyVibe] Sending booking request:",
@@ -387,9 +350,8 @@ export default function Checkout() {
       );
 
       // -----------------------------------------------
-      // 10. Submit booking
+      // 8. Submit booking
       // -----------------------------------------------
-
       const response = await API.post(
         "/api/appointments",
         payload,
@@ -403,9 +365,8 @@ export default function Checkout() {
       const result = response.data;
 
       // -----------------------------------------------
-      // 11. Verify server response
+      // 9. Verify server response
       // -----------------------------------------------
-
       if (!result?.success || !result?.data) {
         throw new Error(
           result?.message ||
@@ -416,9 +377,8 @@ export default function Checkout() {
       const confirmedBooking = result.data;
 
       // -----------------------------------------------
-      // 12. Store confirmation
+      // 10. Store confirmation
       // -----------------------------------------------
-
       sessionStorage.setItem(
         CONFIRMED_KEY,
         JSON.stringify(confirmedBooking)
@@ -436,9 +396,8 @@ export default function Checkout() {
       );
 
       // -----------------------------------------------
-      // 13. Navigate to confirmation
+      // 11. Navigate to confirmation
       // -----------------------------------------------
-
       navigationTimerRef.current = setTimeout(() => {
         navigate("/booking-confirmation", {
           replace: true,
@@ -452,13 +411,11 @@ export default function Checkout() {
       );
 
       const message = getErrorMessage(error);
-
       setErrorMessage(message);
 
       showToast(
         "Booking was not confirmed. Please review the message."
       );
-
       // Keep the draft and request ID for a safe retry.
     } finally {
       submittingRef.current = false;
@@ -523,30 +480,6 @@ export default function Checkout() {
       </div>
     );
   }
-
-  // ====================================================
-  // DISPLAY DATA
-  // ====================================================
-
-  const serviceName =
-    bookingDraft.serviceName ||
-    bookingDraft.name ||
-    bookingDraft.service?.name ||
-    bookingDraft.selectedService?.name ||
-    "Beauty Service";
-
-  const category =
-    bookingDraft.category ||
-    bookingDraft.service?.category ||
-    bookingDraft.selectedService?.category ||
-    "Beauty Ritual";
-
-  const price = Number(bookingDraft.price) || 0;
-
-  const address =
-    bookingDraft.address || "No address provided";
-
-  const displayedServiceId = getServiceId(bookingDraft);
 
   // ====================================================
   // CHECKOUT UI
@@ -620,11 +553,7 @@ export default function Checkout() {
 
               <div className="h-48 w-full shrink-0 overflow-hidden rounded-2xl bg-white sm:h-36 sm:w-36">
                 <img
-                  src={
-                    bookingDraft.image ||
-                    bookingDraft.service?.image ||
-                    DEFAULT_SERVICE_IMAGE
-                  }
+                  src={image}
                   alt={serviceName}
                   className="h-full w-full object-cover"
                   onError={(event) => {
@@ -654,7 +583,7 @@ export default function Checkout() {
                     />
 
                     <strong className="text-[#2D2623]">
-                      {bookingDraft.date}
+                      {cleanDraftString(bookingDraft.date) || "Not Selected"}
                     </strong>
                   </div>
 
@@ -665,7 +594,7 @@ export default function Checkout() {
                     />
 
                     <strong className="text-[#2D2623]">
-                      {bookingDraft.time}
+                      {cleanDraftString(bookingDraft.time) || "Not Selected"}
                     </strong>
                   </div>
 
@@ -676,7 +605,7 @@ export default function Checkout() {
                     />
 
                     <span className="leading-relaxed text-[#2D2623]">
-                      {address}
+                      {address || "No address provided"}
                     </span>
                   </div>
 
@@ -734,7 +663,7 @@ export default function Checkout() {
                 <p className="mt-2 text-[10px] leading-5 text-[#8C7A70]">
                   Payment method selected:{" "}
                   <strong className="uppercase">
-                    {bookingDraft.paymentMethod || "UPI"}
+                    {cleanDraftString(bookingDraft.paymentMethod) || "UPI"}
                   </strong>
                 </p>
               </div>
