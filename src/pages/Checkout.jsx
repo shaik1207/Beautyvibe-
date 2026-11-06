@@ -13,6 +13,7 @@ import {
   AlertCircle,
   RefreshCw,
   MapPin,
+  Layers,
 } from "lucide-react";
 
 import API from "../services/axios";
@@ -62,7 +63,6 @@ const fadeUp = {
 // HELPERS & SANITIZATION
 // ======================================================
 
-// Prevents literal "undefined" or "null" strings from local storage caching
 const cleanDraftString = (val) => {
   if (val === undefined || val === null) return "";
   const str = String(val).trim();
@@ -72,35 +72,31 @@ const cleanDraftString = (val) => {
   return str;
 };
 
-// Extract the actual MySQL service ID from supported draft shapes.
-const getServiceId = (draft) => {
-  const possibleIds = [
-    draft?.serviceId,
-    draft?.service?.id,
-    draft?.service?._id,
-    draft?.selectedService?.id,
-    draft?.selectedService?._id,
-  ];
+// Extract and normalize all services from draft (supports single or multiple items)
+const getNormalizedServices = (draft) => {
+  if (!draft) return [];
 
-  for (const value of possibleIds) {
-    if (
-      value === undefined ||
-      value === null ||
-      value === "" ||
-      value === "undefined" ||
-      value === "null"
-    ) {
-      continue;
-    }
+  const rawList = 
+    draft.services || 
+    draft.selectedServices || 
+    draft.items || 
+    (draft.serviceId || draft.serviceName ? [draft] : []);
 
-    const id = Number(value);
+  if (!Array.isArray(rawList)) return [];
 
-    if (Number.isSafeInteger(id) && id > 0) {
-      return id;
-    }
-  }
+  return rawList.map((item, index) => {
+    const sId = Number(item?.serviceId || item?.id || item?._id || item?.service?.id);
+    const validId = Number.isSafeInteger(sId) && sId > 0 ? sId : index + 1;
 
-  return null;
+    return {
+      id: validId,
+      serviceId: validId,
+      name: cleanDraftString(item?.serviceName || item?.name || item?.title) || "Beauty Ritual",
+      category: cleanDraftString(item?.category || item?.serviceCategory) || "Beauty Service",
+      price: Number(item?.price || item?.amount || 0),
+      image: item?.image || item?.serviceImage || DEFAULT_SERVICE_IMAGE,
+    };
+  }).filter((item) => item.name);
 };
 
 const getRequestId = () => {
@@ -160,10 +156,6 @@ export default function Checkout() {
   const toastTimerRef = useRef(null);
   const navigationTimerRef = useRef(null);
 
-  // ====================================================
-  // LOAD BOOKING DRAFT
-  // ====================================================
-
   useEffect(() => {
     try {
       const rawDraft = sessionStorage.getItem(DRAFT_KEY);
@@ -184,11 +176,7 @@ export default function Checkout() {
         }
       }
     } catch (error) {
-      console.error(
-        "[BeautyVibe] Unable to load booking draft:",
-        error
-      );
-
+      console.error("[BeautyVibe] Unable to load booking draft:", error);
       setErrorMessage(
         "Your booking details could not be loaded. Please select your service again."
       );
@@ -197,76 +185,32 @@ export default function Checkout() {
     }
 
     return () => {
-      if (toastTimerRef.current) {
-        clearTimeout(toastTimerRef.current);
-      }
-
-      if (navigationTimerRef.current) {
-        clearTimeout(navigationTimerRef.current);
-      }
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+      if (navigationTimerRef.current) clearTimeout(navigationTimerRef.current);
     };
   }, []);
 
-  // ====================================================
-  // TOAST
-  // ====================================================
-
   function showToast(message) {
     setToast(message);
-
-    if (toastTimerRef.current) {
-      clearTimeout(toastTimerRef.current);
-    }
-
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     toastTimerRef.current = setTimeout(() => {
       setToast("");
     }, 3500);
   }
 
-  // ====================================================
-  // DERIVED DATA (Sanitized & Centralized)
-  // ====================================================
-
-  const displayedServiceId = getServiceId(bookingDraft);
-
-  const serviceName =
-    cleanDraftString(bookingDraft?.serviceName) ||
-    cleanDraftString(bookingDraft?.name) ||
-    cleanDraftString(bookingDraft?.service?.name) ||
-    cleanDraftString(bookingDraft?.selectedService?.name) ||
-    "Beauty Service";
-
-  const category =
-    cleanDraftString(bookingDraft?.category) ||
-    cleanDraftString(bookingDraft?.service?.category) ||
-    cleanDraftString(bookingDraft?.selectedService?.category) ||
-    "Beauty Ritual";
-
-  const price = 
-    Number(bookingDraft?.price) || 
-    Number(bookingDraft?.amount) ||
-    Number(bookingDraft?.service?.price) || 
-    Number(bookingDraft?.selectedService?.price) || 
-    0;
+  // Derived Multi-Service Data
+  const servicesList = getNormalizedServices(bookingDraft);
+  const primaryService = servicesList[0] || {};
+  
+  const totalPrice = servicesList.reduce((sum, item) => sum + (Number(item.price) || 0), 0) || 
+    Number(bookingDraft?.price || bookingDraft?.amount || 0);
 
   const address = cleanDraftString(bookingDraft?.address);
-
-  const image = 
-    bookingDraft?.image ||
-    bookingDraft?.service?.image ||
-    bookingDraft?.selectedService?.image ||
-    DEFAULT_SERVICE_IMAGE;
-
-  // ====================================================
-  // CONFIRM BOOKING
-  // ====================================================
 
   async function handleConfirmBooking(event) {
     event.preventDefault();
 
-    if (!bookingDraft || submittingRef.current) {
-      return;
-    }
+    if (!bookingDraft || submittingRef.current) return;
 
     submittingRef.current = true;
     setLoading(true);
@@ -277,59 +221,31 @@ export default function Checkout() {
       const appointmentTime = cleanDraftString(bookingDraft.time);
       const paymentMethod = cleanDraftString(bookingDraft.paymentMethod) || "upi";
 
-      // -----------------------------------------------
-      // 1. Validate service ID
-      // -----------------------------------------------
-      if (!displayedServiceId) {
-        throw new Error(
-          "The selected service has an invalid or missing database ID. Please return to Services and select the service again."
-        );
+      if (servicesList.length === 0) {
+        throw new Error("Please select at least one service before checkout.");
       }
 
-      // -----------------------------------------------
-      // 2. Validate service name
-      // -----------------------------------------------
-      if (!serviceName) {
-        throw new Error("Please select a valid service.");
-      }
-
-      // -----------------------------------------------
-      // 3. Validate displayed price
-      // -----------------------------------------------
-      if (!Number.isFinite(price) || price < 0) {
-        throw new Error("The service price is invalid.");
-      }
-
-      // -----------------------------------------------
-      // 4. Validate appointment schedule
-      // -----------------------------------------------
       if (!appointmentDate) {
         throw new Error("Please select an appointment date.");
       }
       if (!appointmentTime) {
         throw new Error("Please select an appointment time.");
       }
-
-      // -----------------------------------------------
-      // 5. Validate home service address
-      // -----------------------------------------------
       if (!address) {
         throw new Error("Your doorstep service address is required.");
       }
 
-      // -----------------------------------------------
-      // 6. Keep a persistent request ID for retries
-      // -----------------------------------------------
       const requestId = getRequestId();
 
-      // -----------------------------------------------
-      // 7. Prepare booking payload
-      // -----------------------------------------------
+      // Payload supporting multiple services or single primary service fallback
       const payload = {
-        serviceId: displayedServiceId,
-        serviceName: serviceName,
-        category: category,
-        amount: price,
+        serviceId: primaryService.serviceId || 1,
+        serviceName: servicesList.length > 1 
+          ? `${primaryService.name} + ${servicesList.length - 1} more service(s)` 
+          : primaryService.name,
+        category: primaryService.category || "Beauty Ritual",
+        services: servicesList, // Multi-services array payload
+        amount: totalPrice,
         type: "HOME",
         date: appointmentDate,
         time: appointmentTime,
@@ -338,20 +254,6 @@ export default function Checkout() {
         requestId: requestId,
       };
 
-      console.log(
-        "[BeautyVibe] Sending booking request:",
-        {
-          serviceId: payload.serviceId,
-          serviceName: payload.serviceName,
-          date: payload.date,
-          time: payload.time,
-          requestId: payload.requestId,
-        }
-      );
-
-      // -----------------------------------------------
-      // 8. Submit booking
-      // -----------------------------------------------
       const response = await API.post(
         "/api/appointments",
         payload,
@@ -364,21 +266,14 @@ export default function Checkout() {
 
       const result = response.data;
 
-      // -----------------------------------------------
-      // 9. Verify server response
-      // -----------------------------------------------
       if (!result?.success || !result?.data) {
         throw new Error(
-          result?.message ||
-            "The server could not confirm your appointment."
+          result?.message || "The server could not confirm your appointment."
         );
       }
 
       const confirmedBooking = result.data;
 
-      // -----------------------------------------------
-      // 10. Store confirmation
-      // -----------------------------------------------
       sessionStorage.setItem(
         CONFIRMED_KEY,
         JSON.stringify(confirmedBooking)
@@ -395,9 +290,6 @@ export default function Checkout() {
           : "Your appointment has been booked successfully."
       );
 
-      // -----------------------------------------------
-      // 11. Navigate to confirmation
-      // -----------------------------------------------
       navigationTimerRef.current = setTimeout(() => {
         navigate("/booking-confirmation", {
           replace: true,
@@ -405,34 +297,21 @@ export default function Checkout() {
       }, 700);
 
     } catch (error) {
-      console.error(
-        "[BeautyVibe] Booking request failed:",
-        error.response?.data || error
-      );
-
+      console.error("[BeautyVibe] Booking request failed:", error.response?.data || error);
       const message = getErrorMessage(error);
       setErrorMessage(message);
-
-      showToast(
-        "Booking was not confirmed. Please review the message."
-      );
-      // Keep the draft and request ID for a safe retry.
+      showToast("Booking was not confirmed. Please review the message.");
     } finally {
       submittingRef.current = false;
       setLoading(false);
     }
   }
 
-  // ====================================================
-  // LOADING SCREEN
-  // ====================================================
-
   if (!draftLoaded) {
     return (
       <div className="flex min-h-[70vh] items-center justify-center bg-[#FCF9F6]">
         <div className="flex flex-col items-center gap-4">
           <div className="h-10 w-10 animate-spin rounded-full border-2 border-[#EADBD2] border-t-[#C56E4E]" />
-
           <p className="text-xs font-semibold tracking-wide text-[#8C7A70]">
             Preparing your checkout...
           </p>
@@ -441,35 +320,21 @@ export default function Checkout() {
     );
   }
 
-  // ====================================================
-  // NO BOOKING DRAFT
-  // ====================================================
-
-  if (!bookingDraft) {
+  if (!bookingDraft || servicesList.length === 0) {
     return (
       <div className="flex min-h-[70vh] flex-1 flex-col items-center justify-center bg-[#FCF9F6] px-6 py-12 text-center text-[#2D2623]">
         <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full border border-[#EADBD2] bg-white shadow-sm">
-          <CalendarDays
-            size={30}
-            className="text-[#C56E4E]"
-          />
+          <CalendarDays size={30} className="text-[#C56E4E]" />
         </div>
-
         <h2 className="mb-3 font-serif text-2xl font-bold sm:text-3xl">
           No Active Booking
         </h2>
-
         <p className="mb-8 max-w-sm text-sm leading-6 text-[#8C7A70]">
-          Your checkout does not contain an active service
-          selection. Please choose a service to continue.
+          Your checkout does not contain any active service selections. Please choose your services to continue.
         </p>
-
         {errorMessage && (
-          <p className="mb-5 max-w-md text-sm text-red-600">
-            {errorMessage}
-          </p>
+          <p className="mb-5 max-w-md text-sm text-red-600">{errorMessage}</p>
         )}
-
         <button
           type="button"
           onClick={() => navigate("/services")}
@@ -481,22 +346,14 @@ export default function Checkout() {
     );
   }
 
-  // ====================================================
-  // CHECKOUT UI
-  // ====================================================
-
   return (
     <div className="relative min-w-0 flex-1 bg-[#FCF9F6] pb-32 font-sans text-[#2D2623] selection:bg-[#C56E4E] selection:text-white">
-
       <motion.main
         variants={staggerContainer}
         initial="hidden"
         animate="show"
         className="mx-auto max-w-3xl space-y-6 px-4 pt-6 sm:px-6 sm:pt-8"
       >
-
-        {/* Back button */}
-
         <motion.button
           variants={fadeUp}
           type="button"
@@ -508,24 +365,15 @@ export default function Checkout() {
           Back to Details
         </motion.button>
 
-        {/* Main checkout card */}
-
         <motion.section
           variants={fadeUp}
           className="overflow-hidden rounded-[2rem] border border-[#EADBD2] bg-white shadow-[0_18px_60px_rgba(80,47,31,0.08)] sm:rounded-[2.5rem]"
         >
-
-          {/* Header */}
-
           <div className="border-b border-[#EADBD2]/70 px-6 pb-6 pt-7 sm:px-10 sm:pb-8 sm:pt-10">
             <div className="mb-4 flex items-center gap-2.5">
               <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#FFF0E7]">
-                <Sparkles
-                  size={17}
-                  className="text-[#C56E4E]"
-                />
+                <Sparkles size={17} className="text-[#C56E4E]" />
               </div>
-
               <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#C56E4E] sm:text-xs">
                 BeautyVibe · Secure Doorstep Checkout
               </span>
@@ -533,130 +381,109 @@ export default function Checkout() {
 
             <h1 className="font-serif text-2xl font-bold leading-tight sm:text-3xl">
               Review & Confirm
-
               <span className="mt-1 block text-[#C56E4E]">
-                Your Home Appointment
+                {servicesList.length > 1 ? `Your ${servicesList.length} Selected Rituals` : "Your Home Appointment"}
               </span>
             </h1>
 
             <p className="mt-3 max-w-lg text-xs leading-6 text-[#8C7A70] sm:text-sm">
-              Review your doorstep service schedule and
-              address before confirming your booking.
+              Review your selected services, schedule, and doorstep address before confirming your booking.
             </p>
           </div>
 
           <div className="p-5 sm:p-10">
-
-            {/* Selected service */}
-
-            <div className="mb-8 flex flex-col gap-5 rounded-[1.75rem] border border-[#EADBD2] bg-[#FFF8F3] p-4 sm:flex-row sm:items-center sm:p-5">
-
-              <div className="h-48 w-full shrink-0 overflow-hidden rounded-2xl bg-white sm:h-36 sm:w-36">
-                <img
-                  src={image}
-                  alt={serviceName}
-                  className="h-full w-full object-cover"
-                  onError={(event) => {
-                    event.currentTarget.onerror = null;
-                    event.currentTarget.src =
-                      DEFAULT_SERVICE_IMAGE;
-                  }}
-                />
+            
+            {/* Multi-Service Itemized List */}
+            <div className="mb-8 space-y-4">
+              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#8C7A70]">
+                <Layers size={14} className="text-[#C56E4E]" />
+                Selected Services ({servicesList.length})
               </div>
 
-              <div className="min-w-0 flex-1">
-
-                <span className="inline-flex rounded-md border border-[#EADBD2] bg-white px-3 py-1 text-[9px] font-bold uppercase tracking-[0.15em] text-[#C56E4E]">
-                  {category}
-                </span>
-
-                <h2 className="mt-3 break-words font-serif text-xl font-bold sm:text-2xl">
-                  {serviceName}
-                </h2>
-
-                <div className="mt-4 space-y-2.5">
-
-                  <div className="flex items-center gap-2 text-xs text-[#8C7A70]">
-                    <CalendarDays
-                      size={14}
-                      className="shrink-0 text-[#C56E4E]"
-                    />
-
-                    <strong className="text-[#2D2623]">
-                      {cleanDraftString(bookingDraft.date) || "Not Selected"}
-                    </strong>
+              {servicesList.map((srv, idx) => (
+                <div
+                  key={idx}
+                  className="flex flex-col gap-4 rounded-[1.5rem] border border-[#EADBD2] bg-[#FFF8F3] p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5"
+                >
+                  <div className="flex items-center gap-4 min-w-0">
+                    <div className="h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-white">
+                      <img
+                        src={srv.image || DEFAULT_SERVICE_IMAGE}
+                        alt={srv.name}
+                        className="h-full w-full object-cover"
+                        onError={(event) => {
+                          event.currentTarget.onerror = null;
+                          event.currentTarget.src = DEFAULT_SERVICE_IMAGE;
+                        }}
+                      />
+                    </div>
+                    <div className="min-w-0">
+                      <span className="inline-block rounded bg-white px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-[#C56E4E] border border-[#EADBD2]/60 mb-1">
+                        {srv.category}
+                      </span>
+                      <h3 className="font-serif text-base font-bold truncate text-[#2D2623]">
+                        {srv.name}
+                      </h3>
+                    </div>
                   </div>
 
-                  <div className="flex items-center gap-2 text-xs text-[#8C7A70]">
-                    <Clock
-                      size={14}
-                      className="shrink-0 text-[#C56E4E]"
-                    />
-
-                    <strong className="text-[#2D2623]">
-                      {cleanDraftString(bookingDraft.time) || "Not Selected"}
-                    </strong>
-                  </div>
-
-                  <div className="flex items-start gap-2 text-xs text-[#8C7A70]">
-                    <MapPin
-                      size={14}
-                      className="mt-0.5 shrink-0 text-[#C56E4E]"
-                    />
-
-                    <span className="leading-relaxed text-[#2D2623]">
-                      {address || "No address provided"}
+                  <div className="text-right shrink-0 sm:pl-4">
+                    <span className="font-serif text-base font-bold text-[#C56E4E]">
+                      ₹{srv.price.toLocaleString("en-IN")}
                     </span>
                   </div>
-
-                  <div className="flex items-center gap-2 text-xs text-[#8C7A70]">
-                    <House
-                      size={14}
-                      className="shrink-0 text-[#C56E4E]"
-                    />
-
-                    <span className="font-semibold text-[#2D2623]">
-                      Doorstep Home Service
-                    </span>
-                  </div>
-
                 </div>
+              ))}
+            </div>
+
+            {/* Schedule & Location Summary Box */}
+            <div className="mb-8 rounded-[1.5rem] border border-[#EADBD2] bg-[#FCF9F6] p-5 space-y-3">
+              <div className="flex items-center gap-2.5 text-xs text-[#8C7A70]">
+                <CalendarDays size={14} className="shrink-0 text-[#C56E4E]" />
+                <strong className="text-[#2D2623]">
+                  {cleanDraftString(bookingDraft.date) || "Not Selected"}
+                </strong>
+              </div>
+
+              <div className="flex items-center gap-2.5 text-xs text-[#8C7A70]">
+                <Clock size={14} className="shrink-0 text-[#C56E4E]" />
+                <strong className="text-[#2D2623]">
+                  {cleanDraftString(bookingDraft.time) || "Not Selected"}
+                </strong>
+              </div>
+
+              <div className="flex items-start gap-2.5 text-xs text-[#8C7A70] pt-2 border-t border-[#EADBD2]/60">
+                <MapPin size={14} className="mt-0.5 shrink-0 text-[#C56E4E]" />
+                <span className="leading-relaxed text-[#2D2623]">
+                  {address || "No address provided"}
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2.5 text-xs text-[#8C7A70]">
+                <House size={14} className="shrink-0 text-[#C56E4E]" />
+                <span className="font-semibold text-[#2D2623]">
+                  Doorstep Home Service
+                </span>
               </div>
             </div>
 
             {/* Price breakdown */}
-
             <div className="mb-8 space-y-4 rounded-2xl border border-[#EADBD2]/80 bg-white p-5 sm:p-6">
-
               <div className="flex items-center justify-between gap-4 text-xs sm:text-sm">
-                <span className="text-[#8C7A70]">
-                  Service Price
-                </span>
-
-                <strong className="text-[#2D2623]">
-                  ₹{price.toLocaleString("en-IN")}
-                </strong>
+                <span className="text-[#8C7A70]">Services Total ({servicesList.length} items)</span>
+                <strong className="text-[#2D2623]">₹{totalPrice.toLocaleString("en-IN")}</strong>
               </div>
 
               <div className="flex items-center justify-between gap-4 text-xs sm:text-sm">
-                <span className="text-[#8C7A70]">
-                  Doorstep Travel & Equipment Kit
-                </span>
-
-                <span className="font-bold text-[#1E9E4A]">
-                  FREE
-                </span>
+                <span className="text-[#8C7A70]">Doorstep Travel & Equipment Kit</span>
+                <span className="font-bold text-[#1E9E4A]">FREE</span>
               </div>
 
               <div className="border-t border-dashed border-[#EADBD2] pt-5">
-
                 <div className="flex items-center justify-between gap-4">
-                  <span className="font-serif text-base font-bold sm:text-lg">
-                    Total Payable
-                  </span>
-
+                  <span className="font-serif text-base font-bold sm:text-lg">Total Payable</span>
                   <strong className="font-serif text-2xl font-bold text-[#C56E4E] sm:text-3xl">
-                    ₹{price.toLocaleString("en-IN")}
+                    ₹{totalPrice.toLocaleString("en-IN")}
                   </strong>
                 </div>
 
@@ -669,42 +496,7 @@ export default function Checkout() {
               </div>
             </div>
 
-            {/* Service ID validation */}
-
-            {!displayedServiceId && (
-              <div
-                role="alert"
-                className="mb-6 flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700"
-              >
-                <AlertCircle
-                  size={18}
-                  className="mt-0.5 shrink-0"
-                />
-
-                <div>
-                  <p className="font-bold">
-                    Service selection needs refreshing
-                  </p>
-
-                  <p className="mt-1 text-xs leading-5">
-                    We could not identify the selected service
-                    in the database. Please return to Services
-                    and select it again before confirming.
-                  </p>
-
-                  <button
-                    type="button"
-                    onClick={() => navigate("/services")}
-                    className="mt-3 rounded-full bg-red-600 px-4 py-2 text-xs font-bold text-white hover:bg-red-700"
-                  >
-                    Select Service Again
-                  </button>
-                </div>
-              </div>
-            )}
-
             {/* Error message */}
-
             <AnimatePresence>
               {errorMessage && (
                 <motion.div
@@ -714,97 +506,59 @@ export default function Checkout() {
                   role="alert"
                   className="mb-6 flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700"
                 >
-                  <AlertCircle
-                    size={18}
-                    className="mt-0.5 shrink-0"
-                  />
-
+                  <AlertCircle size={18} className="mt-0.5 shrink-0" />
                   <div>
-                    <p className="font-bold">
-                      Booking confirmation unsuccessful
-                    </p>
-
-                    <p className="mt-1 break-words text-xs leading-5">
-                      {errorMessage}
-                    </p>
+                    <p className="font-bold">Booking confirmation unsuccessful</p>
+                    <p className="mt-1 break-words text-xs leading-5">{errorMessage}</p>
                   </div>
                 </motion.div>
               )}
             </AnimatePresence>
 
             {/* Confirm button */}
-
             <button
               type="button"
               onClick={handleConfirmBooking}
-              disabled={loading || !displayedServiceId}
+              disabled={loading || servicesList.length === 0}
               className={`group flex w-full items-center justify-center gap-2.5 rounded-full px-6 py-4 text-xs font-bold uppercase tracking-[0.12em] text-white shadow-[0_12px_30px_rgba(197,110,78,0.25)] transition-all duration-300 sm:py-5 ${
-                loading || !displayedServiceId
+                loading || servicesList.length === 0
                   ? "cursor-not-allowed bg-[#B8A49A]"
                   : "cursor-pointer bg-[#C56E4E] hover:-translate-y-0.5 hover:bg-[#A35539] hover:shadow-[0_16px_35px_rgba(197,110,78,0.32)]"
               }`}
             >
               {loading ? (
                 <>
-                  <RefreshCw
-                    size={16}
-                    className="animate-spin"
-                  />
+                  <RefreshCw size={16} className="animate-spin" />
                   Confirming Appointment...
                 </>
               ) : (
                 <>
                   <ShieldCheck size={16} />
-                  Confirm Home Appointment
-
-                  <CheckCircle2
-                    size={16}
-                    className="transition-transform group-hover:scale-110"
-                  />
+                  Confirm Home Appointment ({servicesList.length} {servicesList.length === 1 ? 'Service' : 'Services'})
+                  <CheckCircle2 size={16} className="transition-transform group-hover:scale-110" />
                 </>
               )}
             </button>
-
           </div>
         </motion.section>
       </motion.main>
 
       {/* Toast notification */}
-
       <AnimatePresence>
         {toast && (
           <motion.div
-            initial={{
-              opacity: 0,
-              y: 35,
-              scale: 0.96,
-            }}
-            animate={{
-              opacity: 1,
-              y: 0,
-              scale: 1,
-            }}
-            exit={{
-              opacity: 0,
-              y: 20,
-              scale: 0.97,
-            }}
+            initial={{ opacity: 0, y: 35, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20, scale: 0.97 }}
             role="status"
             aria-live="polite"
             className="fixed bottom-6 left-1/2 z-[100] flex max-w-[90vw] -translate-x-1/2 items-center gap-3 rounded-2xl border border-white/15 bg-[#2D2623]/95 px-5 py-4 text-xs font-semibold text-white shadow-2xl backdrop-blur-xl sm:bottom-8 sm:px-6"
           >
-            <CheckCircle2
-              size={18}
-              className="shrink-0 text-[#E5A024]"
-            />
-
-            <span className="leading-5">
-              {toast}
-            </span>
+            <CheckCircle2 size={18} className="shrink-0 text-[#E5A024]" />
+            <span className="leading-5">{toast}</span>
           </motion.div>
         )}
       </AnimatePresence>
-
     </div>
   );
 }
