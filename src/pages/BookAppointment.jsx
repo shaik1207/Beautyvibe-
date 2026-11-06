@@ -145,10 +145,46 @@ export default function BookAppointment() {
   const [loading, setLoading] = useState(true);
   const [selectedServiceIds, setSelectedServiceIds] = useState([]);
 
-  // Customer Details State
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
-  const [mobileNumber, setMobileNumber] = useState("");
+  // Customer Details State with LocalStorage Hydration Fallback
+  const [firstName, setFirstName] = useState(() => {
+    try {
+      const localUser = JSON.parse(localStorage.getItem("beautyvibe_user") || "{}");
+      if (localUser.firstName) return localUser.firstName;
+      if (localUser.name) {
+        return localUser.name.trim().split(" ")[0] || "";
+      }
+    } catch {}
+    return "";
+  });
+
+  const [lastName, setLastName] = useState(() => {
+    try {
+      const localUser = JSON.parse(localStorage.getItem("beautyvibe_user") || "{}");
+      if (localUser.lastName) return localUser.lastName;
+      if (localUser.name) {
+        const parts = localUser.name.trim().split(" ");
+        return parts.slice(1).join(" ") || "";
+      }
+    } catch {}
+    return "";
+  });
+
+  const [mobileNumber, setMobileNumber] = useState(() => {
+    try {
+      const localUser = JSON.parse(localStorage.getItem("beautyvibe_user") || "{}");
+      return (
+        localUser.phone ||
+        localUser.mobile ||
+        localUser.phoneNumber ||
+        localUser.mobileNumber ||
+        localUser.phone_number ||
+        localUser.number ||
+        localUser.contact ||
+        ""
+      );
+    } catch {}
+    return "";
+  });
 
   const [liveNow, setLiveNow] = useState(() => new Date());
   const today = formatLocalDate(liveNow);
@@ -230,16 +266,20 @@ export default function BookAppointment() {
         if (profileRes.status === "fulfilled") {
           const userData = profileRes.value.data?.data || profileRes.value.data?.user || profileRes.value.data;
           if (userData) {
-            if (userData.firstName) setFirstName(userData.firstName);
-            if (userData.lastName) setLastName(userData.lastName);
-            if (!userData.firstName && userData.name) {
-              const parts = userData.name.trim().split(" ");
-              setFirstName(parts[0] || "");
-              setLastName(parts.slice(1).join(" ") || "");
-            }
-            if (userData.phone || userData.mobile || userData.phoneNumber) {
-              setMobileNumber(userData.phone || userData.mobile || userData.phoneNumber);
-            }
+            const resolvedFName = userData.firstName || (userData.name ? userData.name.trim().split(" ")[0] : "");
+            const resolvedLName = userData.lastName || (userData.name ? userData.name.trim().split(" ").slice(1).join(" ") : "");
+            const resolvedPhone =
+              userData.phone ||
+              userData.mobile ||
+              userData.phoneNumber ||
+              userData.mobileNumber ||
+              userData.phone_number ||
+              userData.number ||
+              userData.contact;
+
+            if (resolvedFName && !firstName) setFirstName(resolvedFName);
+            if (resolvedLName && !lastName) setLastName(resolvedLName);
+            if (resolvedPhone && !mobileNumber) setMobileNumber(resolvedPhone);
           }
         }
       } catch (err) {
